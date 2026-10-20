@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FocusFlow Planner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-wrap">
+          <div class="brand-mark">F</div>
+          <div>
+            <h1>FocusFlow</h1>
+            <p>Smart planner</p>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="section-head">
+            <span>Categories</span>
+            <button id="addCategoryBtn" class="icon-button" title="Add category">+</button>
+          </div>
+          <div id="categoryList" class="category-list"></div>
+        </div>
+
+        <div class="sidebar-section storage-panel">
+          <button id="requestNotificationBtn" class="secondary-btn wide">Enable reminders</button>
+          <div class="storage-actions">
+            <button id="exportBtn" class="secondary-btn">Export</button>
+            <label class="secondary-btn file-picker">
+              <input id="importFile" type="file" accept="application/json" />
+              Import
+            </label>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div class="date-nav">
+            <button id="prevDayBtn" class="nav-btn" aria-label="Previous day">‹</button>
+            <input id="datePicker" type="date" />
+            <button id="nextDayBtn" class="nav-btn" aria-label="Next day">›</button>
+          </div>
+          <div class="top-actions">
+            <button id="todayBtn" class="secondary-btn">Today</button>
+            <button id="newTaskBtn" class="primary-btn">+ New task</button>
+          </div>
+        </header>
+
+        <section class="stats-grid">
+          <div class="stat-card card-purple">
+            <span>Completed</span>
+            <strong id="completedCount">0</strong>
+          </div>
+          <div class="stat-card card-blue">
+            <span>Open tasks</span>
+            <strong id="openCount">0</strong>
+          </div>
+          <div class="stat-card card-green">
+            <span>Streak</span>
+            <strong id="streakCount">0 days</strong>
+          </div>
+          <div class="stat-card card-orange">
+            <span>Focus time</span>
+            <strong id="focusMinutes">0m</strong>
+          </div>
+        </section>
+
+        <section class="content-grid">
+          <div class="calendar-section">
+            <div class="mini-calendar-header">
+              <h2>Calendar</h2>
+            </div>
+            <div id="calendarStrip" class="calendar-strip"></div>
+          </div>
+
+          <div class="task-panel card-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Selected focus</p>
+                <h2 id="selectedCategoryTitle">Gym</h2>
+              </div>
+              <select id="priorityFilter">
+                <option value="all">All priorities</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+
+            <div id="taskList" class="task-list"></div>
+          </div>
+
+          <aside class="side-stack">
+            <div class="card-panel task-form-panel">
+              <div class="panel-header compact">
+                <div>
+                  <p class="eyebrow">Planner</p>
+                  <h3>Create task</h3>
+                </div>
+              </div>
+
+              <form id="taskForm" class="task-form">
+                <label>
+                  <span>Title</span>
+                  <input id="taskTitle" name="title" type="text" placeholder="e.g. Upper body workout" required />
+                </label>
+
+                <div class="two-col">
+                  <label>
+                    <span>Category</span>
+                    <select id="taskCategory" name="category"></select>
+                  </label>
+                  <label>
+                    <span>Priority</span>
+                    <select id="taskPriority" name="priority">
+                      <option value="high">High</option>
+                      <option value="medium" selected>Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="two-col">
+                  <label>
+                    <span>Date</span>
+                    <input id="taskDate" name="date" type="date" required />
+                  </label>
+                  <label>
+                    <span>Time</span>
+                    <input id="taskTime" name="time" type="time" />
+                  </label>
+                </div>
+
+                <label>
+                  <span>Notes</span>
+                  <textarea id="taskNotes" name="notes" rows="3" placeholder="Add context, goals, or reminders"></textarea>
+                </label>
+
+                <div id="customFields" class="custom-fields"></div>
+
+                <div class="two-col">
+                  <label>
+                    <span>Reminder</span>
+                    <select id="taskReminderMinutes">
+                      <option value="0">At time</option>
+                      <option value="5">5 min before</option>
+                      <option value="15" selected>15 min before</option>
+                      <option value="30">30 min before</option>
+                      <option value="60">1 hour before</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Repeat</span>
+                    <select id="taskRecurrence">
+                      <option value="none">No repeat</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </label>
+                </div>
+
+                <button type="submit" class="primary-btn full-width">Save task</button>
+                <button type="button" id="clearTaskForm" class="secondary-btn full-width">Clear</button>
+              </form>
+            </div>
+
+            <div class="card-panel pomodoro-panel">
+              <div class="panel-header compact">
+                <div>
+                  <p class="eyebrow">Focus mode</p>
+                  <h3>Pomodoro</h3>
+                </div>
+              </div>
+
+              <div class="timer-circle">
+                <span id="timerDisplay">25:00</span>
+              </div>
+
+              <div class="timer-actions">
+                <button id="startPomodoroBtn" class="primary-btn">Start</button>
+                <button id="resetPomodoroBtn" class="secondary-btn">Reset</button>
+              </div>
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <div id="toastContainer" class="toast-container"></div>
+    <audio id="alarmSound" preload="auto"></audio>
+
+    <script src="script.js"></script>
+  </body>
+</html>
