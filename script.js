@@ -34,6 +34,8 @@ const state = {
   selectedCategory: 'Gym',
   selectedDate: formatDateInput(new Date()),
   selectedPriority: 'all',
+  mobileView: 'tasks',
+  taskOriginCategory: 'Gym',
   tasks: [],
   notificationPermission: 'default',
   pomodoro: {
@@ -66,11 +68,10 @@ const els = {
   addCategoryBtn: document.getElementById('addCategoryBtn'),
   newTaskBtn: document.getElementById('newTaskBtn'),
   priorityFilter: document.getElementById('priorityFilter'),
-  calendarStrip: document.getElementById('calendarStrip'),
+  tasksAddedCount: document.getElementById('tasksAddedCount'),
   completedCount: document.getElementById('completedCount'),
   openCount: document.getElementById('openCount'),
-  streakCount: document.getElementById('streakCount'),
-  focusMinutes: document.getElementById('focusMinutes'),
+  completionRate: document.getElementById('completionRate'),
   timerDisplay: document.getElementById('timerDisplay'),
   startPomodoroBtn: document.getElementById('startPomodoroBtn'),
   resetPomodoroBtn: document.getElementById('resetPomodoroBtn'),
@@ -78,7 +79,10 @@ const els = {
   importFile: document.getElementById('importFile'),
   requestNotificationBtn: document.getElementById('requestNotificationBtn'),
   toastContainer: document.getElementById('toastContainer'),
-  alarmSound: document.getElementById('alarmSound')
+  alarmSound: document.getElementById('alarmSound'),
+  sidebar: document.getElementById('categoryDrawer'),
+  menuToggle: document.getElementById('menuToggle'),
+  menuScrim: document.getElementById('menuScrim')
 };
 
 function generateId() {
@@ -161,7 +165,7 @@ function persistState() {
 }
 
 function seedForm() {
-  els.taskCategory.innerHTML = state.categories
+  els.taskCategory.innerHTML = '<option value="" disabled selected>Choose a category</option>' + state.categories
     .map((category) => `<option value="${category}">${category}</option>`)
     .join('');
 
@@ -176,7 +180,7 @@ function seedForm() {
 }
 
 function renderCustomFields() {
-  const selectedCategory = els.taskCategory.value || state.selectedCategory;
+  const selectedCategory = els.taskCategory.value;
   const fields = CUSTOM_FIELDS[selectedCategory] || [];
 
   if (!fields.length) {
@@ -228,7 +232,7 @@ function getVisibleTasks() {
 function renderCategories() {
   const totalCounts = {};
   state.categories.forEach((category) => {
-    totalCounts[category] = state.tasks.filter((task) => task.category === category && task.date === state.selectedDate).length;
+    totalCounts[category] = state.tasks.filter((task) => task.category === category).length;
   });
 
   const categoryButtons = state.categories
@@ -252,39 +256,11 @@ function renderCategories() {
         <span class="category-dot" style="background:#a78bfa"></span>
         <span>All</span>
       </span>
-      <span class="category-count">${state.tasks.filter((task) => task.date === state.selectedDate).length}</span>
+      <span class="category-count">${state.tasks.length}</span>
     </button>
   `;
 
-  els.categoryList.insertAdjacentHTML('afterend', '');
   els.categoryList.innerHTML = allButton + categoryButtons;
-}
-
-function renderCalendarStrip() {
-  const days = [];
-  const today = parseDateInput(state.selectedDate);
-
-  for (let i = -3; i <= 3; i += 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + i);
-    const dateString = formatDateInput(date);
-    const count = state.tasks.filter((task) => task.date === dateString).length;
-    const active = dateString === state.selectedDate;
-    const dayKey = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date);
-
-    days.push(`
-      <button class="calendar-day ${active ? 'active' : ''}" data-date="${dateString}" type="button">
-        <div>
-          <div class="week-label">${dayKey}</div>
-          <div class="date-nb">${date.getDate()}</div>
-        </div>
-        <div></div>
-        <span class="count-badge">${count}</span>
-      </button>
-    `);
-  }
-
-  els.calendarStrip.innerHTML = days.join('');
 }
 
 function renderTaskList() {
@@ -343,53 +319,21 @@ function isTaskLate(task) {
 }
 
 function renderStats() {
-  const completed = state.tasks.filter((task) => task.completed).length;
-  const open = state.tasks.filter((task) => !task.completed).length;
+  const categoryTasks = state.selectedCategory === 'All'
+    ? state.tasks
+    : state.tasks.filter((task) => task.category === state.selectedCategory);
+  const completed = categoryTasks.filter((task) => task.completed).length;
+  const open = categoryTasks.length - completed;
+  const completion = categoryTasks.length ? Math.round((completed / categoryTasks.length) * 100) : 0;
 
+  els.tasksAddedCount.textContent = String(categoryTasks.length);
   els.completedCount.textContent = String(completed);
   els.openCount.textContent = String(open);
-
-  const detectedStreak = computeStreak();
-  els.streakCount.textContent = `${detectedStreak} day${detectedStreak === 1 ? '' : 's'}`;
-
-  const focusMinutes = state.tasks
-    .filter((task) => task.completed && task.customFields && task.customFields.duration)
-    .reduce((sum, task) => {
-      const duration = Number(task.customFields.duration || 0);
-      return sum + (Number.isFinite(duration) ? duration : 0);
-    }, 0);
-  els.focusMinutes.textContent = `${focusMinutes}m`;
-}
-
-function computeStreak() {
-  const uniqueCompletedDates = [...new Set(state.tasks.filter((task) => task.completed).map((task) => task.date))].sort().reverse();
-  if (!uniqueCompletedDates.length) return 0;
-
-  let streak = 0;
-  let cursor = new Date();
-  const today = formatDateInput(cursor);
-
-  const activeDates = new Set(uniqueCompletedDates);
-  if (!activeDates.has(today)) {
-    cursor.setDate(cursor.getDate() - 1);
-  }
-
-  while (true) {
-    const dateKey = formatDateInput(cursor);
-    if (activeDates.has(dateKey)) {
-      streak += 1;
-      cursor.setDate(cursor.getDate() - 1);
-      continue;
-    }
-    break;
-  }
-
-  return streak;
+  els.completionRate.textContent = `${completion}%`;
 }
 
 function renderAll() {
   renderCategories();
-  renderCalendarStrip();
   renderTaskList();
   renderStats();
 }
@@ -397,6 +341,19 @@ function renderAll() {
 function updateCategoryFormValue() {
   els.taskCategory.value = state.selectedCategory === 'All' ? DEFAULT_CATEGORIES[0] : state.selectedCategory;
   renderCustomFields();
+}
+
+function setMobileView(view) {
+  state.mobileView = view;
+  document.body.dataset.mobileView = view;
+}
+
+function setMobileMenuOpen(isOpen) {
+  els.sidebar.classList.toggle('is-open', isOpen);
+  els.menuScrim.hidden = !isOpen;
+  els.menuToggle.setAttribute('aria-expanded', String(isOpen));
+  els.menuToggle.setAttribute('aria-label', isOpen ? 'Close categories menu' : 'Open categories menu');
+  document.body.classList.toggle('menu-open', isOpen);
 }
 
 function addCategory() {
@@ -435,6 +392,11 @@ function createTask(event) {
   }
 
   const category = els.taskCategory.value;
+  if (!category) {
+    showToast('Choose a category for this task', 'warning');
+    els.taskCategory.focus();
+    return;
+  }
   const date = els.taskDate.value || state.selectedDate;
   const time = els.taskTime.value || '09:00';
 
@@ -462,8 +424,11 @@ function createTask(event) {
   };
 
   state.tasks.push(newTask);
-  state.selectedCategory = category;
+  state.selectedCategory = state.taskOriginCategory === 'All' ? 'All' : category;
   state.selectedDate = date;
+  if (window.matchMedia('(max-width: 860px)').matches) {
+    setMobileView('tasks');
+  }
   persistState();
   renderAll();
   els.taskForm.reset();
@@ -541,16 +506,16 @@ function attachCalendarListeners() {
     if (categoryBtn) {
       const selected = categoryBtn.dataset.category;
       state.selectedCategory = selected;
+      state.taskOriginCategory = selected;
+      els.taskCategory.value = selected === 'All' ? '' : selected;
+      renderCustomFields();
+      if (window.matchMedia('(max-width: 860px)').matches) {
+        setMobileView('tasks');
+        setMobileMenuOpen(false);
+      }
       if (selected !== 'All') {
         state.selectedDate = state.selectedDate || formatDateInput(new Date());
       }
-      renderAll();
-      return;
-    }
-
-    const dateBtn = event.target.closest('[data-date]');
-    if (dateBtn) {
-      state.selectedDate = dateBtn.dataset.date;
       renderAll();
       return;
     }
@@ -767,7 +732,40 @@ function wireEvents() {
 
   els.addCategoryBtn.addEventListener('click', addCategory);
   els.newTaskBtn.addEventListener('click', () => {
-    els.taskTitle.focus();
+    state.taskOriginCategory = state.selectedCategory;
+    els.taskForm.reset();
+    els.taskCategory.value = state.selectedCategory === 'All' ? '' : state.selectedCategory;
+    els.taskDate.value = state.selectedDate;
+    els.taskPriority.value = 'medium';
+    els.taskReminderMinutes.value = '15';
+    els.taskRecurrence.value = 'none';
+    renderCustomFields();
+    if (window.matchMedia('(max-width: 860px)').matches) {
+      setMobileView('planner');
+    }
+    els.taskCategory.focus();
+  });
+
+  els.menuToggle.addEventListener('click', () => {
+    setMobileMenuOpen(!els.sidebar.classList.contains('is-open'));
+  });
+  els.menuScrim.addEventListener('click', () => setMobileMenuOpen(false));
+  els.sidebar.addEventListener('click', (event) => {
+    const viewButton = event.target.closest('[data-mobile-view]');
+    if (!viewButton) return;
+    if (viewButton.dataset.mobileView === 'overview') {
+      state.selectedCategory = 'All';
+      state.taskOriginCategory = 'All';
+      renderAll();
+    }
+    setMobileView(viewButton.dataset.mobileView);
+    setMobileMenuOpen(false);
+    if (viewButton.dataset.mobileView === 'planner') {
+      els.taskTitle.focus();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') setMobileMenuOpen(false);
   });
 
   els.exportBtn.addEventListener('click', exportData);
@@ -806,9 +804,13 @@ function wireEvents() {
 function init() {
   loadState();
   state.selectedCategory = state.categories[0] || 'All';
+  if (window.matchMedia('(max-width: 860px)').matches) {
+    setMobileView('tasks');
+  }
   els.datePicker.value = state.selectedDate;
   state.selectedPriority = 'all';
   els.priorityFilter.value = 'all';
+  seedForm();
   updateCategoryFormValue();
   renderAll();
   wireEvents();
