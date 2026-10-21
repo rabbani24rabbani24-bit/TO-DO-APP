@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'focusflow-planner-v1';
 const DEFAULT_CATEGORIES = ['Gym', 'Study', 'Work', 'Health', 'Personal'];
+let alarmAudioContext = null;
 const CUSTOM_FIELDS = {
   Gym: [
     { key: 'equipment', label: 'Equipment', type: 'text' },
@@ -34,9 +35,14 @@ const state = {
   selectedCategory: 'Gym',
   selectedDate: formatDateInput(new Date()),
   selectedPriority: 'all',
+  selectedTaskStatus: 'all',
   mobileView: 'tasks',
   taskOriginCategory: 'Gym',
   tasks: [],
+  deletedTasks: [],
+  profile: { name: '', goal: '', instagram: '', linkedIn: '', x: '', email: '' },
+  categoryDialogMode: 'add',
+  pendingCategoryDelete: '',
   notificationPermission: 'default',
   pomodoro: {
     isRunning: false,
@@ -49,7 +55,10 @@ const state = {
 const els = {
   categoryList: document.getElementById('categoryList'),
   selectedCategoryTitle: document.getElementById('selectedCategoryTitle'),
+  taskPanel: document.querySelector('.task-panel'),
   taskList: document.getElementById('taskList'),
+  taskListMode: document.getElementById('taskListMode'),
+  statsGrid: document.querySelector('.stats-grid'),
   taskForm: document.getElementById('taskForm'),
   taskCategory: document.getElementById('taskCategory'),
   taskTitle: document.getElementById('taskTitle'),
@@ -58,13 +67,17 @@ const els = {
   taskTime: document.getElementById('taskTime'),
   taskNotes: document.getElementById('taskNotes'),
   taskReminderMinutes: document.getElementById('taskReminderMinutes'),
+  taskReminderMode: document.getElementById('taskReminderMode'),
   taskRecurrence: document.getElementById('taskRecurrence'),
   clearTaskForm: document.getElementById('clearTaskForm'),
+  closeTaskFormBtn: document.getElementById('closeTaskFormBtn'),
+  taskFormPanel: document.getElementById('taskFormPanel'),
   customFields: document.getElementById('customFields'),
   datePicker: document.getElementById('datePicker'),
-  prevDayBtn: document.getElementById('prevDayBtn'),
-  nextDayBtn: document.getElementById('nextDayBtn'),
-  todayBtn: document.getElementById('todayBtn'),
+  calendarPickerBtn: document.getElementById('calendarPickerBtn'),
+  focusModeBtn: document.getElementById('focusModeBtn'),
+  focusModeDialog: document.getElementById('focusModeDialog'),
+  closeFocusModeBtn: document.getElementById('closeFocusModeBtn'),
   addCategoryBtn: document.getElementById('addCategoryBtn'),
   newTaskBtn: document.getElementById('newTaskBtn'),
   priorityFilter: document.getElementById('priorityFilter'),
@@ -82,11 +95,44 @@ const els = {
   alarmSound: document.getElementById('alarmSound'),
   sidebar: document.getElementById('categoryDrawer'),
   menuToggle: document.getElementById('menuToggle'),
-  menuScrim: document.getElementById('menuScrim')
+  menuScrim: document.getElementById('menuScrim'),
+  trashCount: document.getElementById('trashCount'),
+  trashList: document.getElementById('trashList'),
+  trashPanel: document.getElementById('trashPanel'),
+  profilePanel: document.getElementById('profilePanel'),
+  profileForm: document.getElementById('profileForm'),
+  profileName: document.getElementById('profileName'),
+  profileGoal: document.getElementById('profileGoal'),
+  profileInstagram: document.getElementById('profileInstagram'),
+  profileLinkedIn: document.getElementById('profileLinkedIn'),
+  profileX: document.getElementById('profileX'),
+  profileEmail: document.getElementById('profileEmail'),
+  greeting: document.getElementById('greeting'),
+  smartSuggestion: document.getElementById('smartSuggestion'),
+  useSuggestionBtn: document.getElementById('useSuggestionBtn'),
+  socialLinks: document.getElementById('socialLinks'),
+  categoryDialog: document.getElementById('categoryDialog'),
+  categoryDialogForm: document.getElementById('categoryDialogForm'),
+  categoryDialogTitle: document.getElementById('categoryDialogTitle'),
+  categoryDialogMessage: document.getElementById('categoryDialogMessage'),
+  categoryDialogInputWrap: document.getElementById('categoryDialogInputWrap'),
+  categoryDialogInput: document.getElementById('categoryDialogInput'),
+  confirmCategoryDialog: document.getElementById('confirmCategoryDialog'),
+  cancelCategoryDialog: document.getElementById('cancelCategoryDialog')
 };
 
 function generateId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]);
 }
 
 function formatDateInput(date) {
@@ -142,6 +188,7 @@ function loadState() {
         reminderTriggered: false
       }
     ];
+    state.deletedTasks = [];
     persistState();
     return;
   }
@@ -150,6 +197,8 @@ function loadState() {
     const saved = JSON.parse(raw);
     state.categories = Array.isArray(saved.categories) && saved.categories.length ? saved.categories : [...DEFAULT_CATEGORIES];
     state.tasks = Array.isArray(saved.tasks) ? saved.tasks : [];
+    state.deletedTasks = Array.isArray(saved.deletedTasks) ? saved.deletedTasks : [];
+    state.profile = { ...state.profile, ...(saved.profile || {}) };
   } catch (error) {
     console.error('Failed to parse saved state', error);
     state.tasks = [];
@@ -159,7 +208,9 @@ function loadState() {
 function persistState() {
   const toSave = {
     categories: state.categories,
-    tasks: state.tasks
+    tasks: state.tasks,
+    deletedTasks: state.deletedTasks,
+    profile: state.profile
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
 }
@@ -175,6 +226,7 @@ function seedForm() {
   els.taskNotes.value = '';
   els.taskPriority.value = 'medium';
   els.taskReminderMinutes.value = '15';
+  els.taskReminderMode.value = 'both';
   els.taskRecurrence.value = 'none';
   renderCustomFields();
 }
@@ -225,6 +277,8 @@ function getVisibleTasks() {
       if (task.category !== state.selectedCategory) return false;
     }
     if (state.selectedPriority !== 'all' && task.priority !== state.selectedPriority) return false;
+    if (state.selectedTaskStatus === 'open' && task.completed) return false;
+    if (state.selectedTaskStatus === 'completed' && !task.completed) return false;
     return true;
   });
 }
@@ -236,15 +290,21 @@ function renderCategories() {
   });
 
   const categoryButtons = state.categories
-    .map((category) => `
-      <button class="category-pill ${state.selectedCategory === category ? 'active' : ''}" data-category="${category}" type="button">
-        <span class="category-meta">
-          <span class="category-dot" style="background:${getCategoryColor(category)}"></span>
-          <span>${category}</span>
-        </span>
-        <span class="category-count">${totalCounts[category] || 0}</span>
-      </button>
-    `)
+    .map((category) => {
+      const label = escapeHtml(category);
+      return `
+        <div class="category-row">
+          <button class="category-pill ${state.selectedCategory === category ? 'active' : ''}" data-category="${label}" type="button">
+            <span class="category-meta">
+              <span class="category-dot" style="background:${getCategoryColor(category)}"></span>
+              <span>${label}</span>
+            </span>
+            <span class="category-count">${totalCounts[category] || 0}</span>
+          </button>
+          <button class="category-delete" type="button" data-action="delete-category" data-category-name="${label}" aria-label="Delete ${label} category" title="Delete ${label}">×</button>
+        </div>
+      `;
+    })
     .join('');
 
   els.categoryList.innerHTML = categoryButtons;
@@ -261,9 +321,17 @@ function renderCategories() {
   `;
 
   els.categoryList.innerHTML = allButton + categoryButtons;
+  els.trashCount.textContent = String(state.deletedTasks.length);
 }
 
 function renderTaskList() {
+  const modeLabels = {
+    all: 'All tasks',
+    open: 'Open tasks',
+    completed: 'Completed tasks'
+  };
+  els.taskListMode.textContent = `${modeLabels[state.selectedTaskStatus]} · ${formatDateLabel(state.selectedDate)}`;
+
   const tasks = getVisibleTasks();
   const inOrder = [...tasks].sort((a, b) => {
     const timeA = a.time || '23:59';
@@ -272,7 +340,12 @@ function renderTaskList() {
   });
 
   if (!inOrder.length) {
-    els.taskList.innerHTML = '<div class="empty-state">No tasks for this category and date. Add something focused and productive.</div>';
+    const emptyMessages = {
+      all: 'No tasks for this category and date. Add something focused and productive.',
+      open: 'No open tasks for this category and date.',
+      completed: 'No completed tasks for this category and date.'
+    };
+    els.taskList.innerHTML = `<div class="empty-state">${emptyMessages[state.selectedTaskStatus]}</div>`;
     return;
   }
 
@@ -303,7 +376,7 @@ function renderTaskList() {
           </div>
           <div class="task-side">
             <span class="task-time">${task.completed ? 'Done' : isTaskLate(task) ? 'Overdue' : 'On track'}</span>
-            <button class="delete-btn" type="button" data-action="delete" data-task-id="${task.id}">Delete</button>
+            <button class="delete-btn" type="button" data-action="delete-task" data-task-id="${task.id}">Delete</button>
           </div>
         </div>
       `;
@@ -330,12 +403,162 @@ function renderStats() {
   els.completedCount.textContent = String(completed);
   els.openCount.textContent = String(open);
   els.completionRate.textContent = `${completion}%`;
+  els.statsGrid.querySelectorAll('[data-task-filter]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.taskFilter === state.selectedTaskStatus));
+  });
+}
+
+function safeExternalUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : '';
+  } catch {
+    return '';
+  }
+}
+
+function renderPersonalization() {
+  const name = state.profile.name.trim();
+  els.greeting.textContent = name ? `Welcome back, ${name}` : 'Welcome to your planner';
+
+  const category = state.selectedCategory === 'All'
+    ? state.categories
+      .map((name) => ({ name, count: state.tasks.filter((task) => task.category === name && task.completed).length }))
+      .sort((a, b) => b.count - a.count)[0]?.name || state.categories[0]
+    : state.selectedCategory;
+  const history = state.tasks
+    .filter((task) => task.category === category && task.completed)
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+  if (state.profile.goal.trim()) {
+    els.smartSuggestion.textContent = `Your goal: ${state.profile.goal.trim()} Try a small 15-minute ${category} session today to keep moving toward it.`;
+    state.suggestion = {
+      title: `15-minute ${category.toLowerCase()} session`,
+      category,
+      notes: `A small step toward your goal: ${state.profile.goal.trim()}`
+    };
+  } else if (history.length) {
+    els.smartSuggestion.textContent = `You completed ${history.length} ${category} task${history.length === 1 ? '' : 's'} in your history. Repeating “${history[0].title}” could help build a routine.`;
+    state.suggestion = {
+      title: history[0].title,
+      category,
+      notes: 'Suggested from a previously completed task.'
+    };
+  } else {
+    els.smartSuggestion.textContent = `Try adding one small ${category} task today. Your completed tasks will help personalize future suggestions.`;
+    state.suggestion = {
+      title: `Plan a first ${category.toLowerCase()} task`,
+      category,
+      notes: 'A small, specific step is easier to complete.'
+    };
+  }
+
+  els.useSuggestionBtn.hidden = false;
+  els.socialLinks.innerHTML = [
+    ['Instagram', 'IG', state.profile.instagram],
+    ['LinkedIn', 'in', state.profile.linkedIn],
+    ['X', 'X', state.profile.x]
+  ].map(([label, icon, value]) => {
+    const href = safeExternalUrl(value);
+    return href
+      ? `<a class="social-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" aria-label="${label}" title="${label}">${icon}</a>`
+      : `<span class="social-link social-link-placeholder" aria-label="${label} link not set" title="Add ${label} in Profile & goals">${icon}</span>`;
+  }).join('');
+  if (state.profile.email.trim()) {
+    const email = state.profile.email.trim();
+    els.socialLinks.insertAdjacentHTML('beforeend', `<a class="social-link" href="mailto:${encodeURIComponent(email)}" aria-label="Email" title="Email">@</a>`);
+  } else {
+    els.socialLinks.insertAdjacentHTML('beforeend', '<span class="social-link social-link-placeholder" aria-label="Email link not set" title="Add an email in Profile & goals">@</span>');
+  }
+}
+
+function loadProfileForm() {
+  els.profileName.value = state.profile.name || '';
+  els.profileGoal.value = state.profile.goal || '';
+  els.profileInstagram.value = state.profile.instagram || '';
+  els.profileLinkedIn.value = state.profile.linkedIn || '';
+  els.profileX.value = state.profile.x || '';
+  els.profileEmail.value = state.profile.email || '';
+}
+
+function saveProfile(event) {
+  event.preventDefault();
+  state.profile = {
+    name: els.profileName.value.trim(),
+    goal: els.profileGoal.value.trim(),
+    instagram: els.profileInstagram.value.trim(),
+    linkedIn: els.profileLinkedIn.value.trim(),
+    x: els.profileX.value.trim(),
+    email: els.profileEmail.value.trim()
+  };
+  persistState();
+  renderAll();
+  showToast('Profile and goal saved', 'success');
+}
+
+function useSuggestion() {
+  const originCategory = state.selectedCategory;
+  state.selectedCategory = state.suggestion.category;
+  els.newTaskBtn.click();
+  state.taskOriginCategory = originCategory;
+  els.taskCategory.value = state.suggestion.category;
+  els.taskTitle.value = state.suggestion.title;
+  els.taskNotes.value = state.suggestion.notes;
+  renderCustomFields();
+}
+
+function purgeExpiredDeletedTasks() {
+  const retentionCutoff = Date.now() - 15 * 24 * 60 * 60 * 1000;
+  state.deletedTasks = state.deletedTasks.filter((entry) => Number(entry.deletedAt) >= retentionCutoff);
+}
+
+function renderTrashList() {
+  els.trashCount.textContent = String(state.deletedTasks.length);
+  if (!state.deletedTasks.length) {
+    els.trashList.innerHTML = '<div class="empty-state">The deleted list is empty.</div>';
+    return;
+  }
+
+  els.trashList.innerHTML = [...state.deletedTasks]
+    .sort((a, b) => b.deletedAt - a.deletedAt)
+    .map(({ task, deletedAt }) => `
+      <div class="task-card trash-card">
+        <div class="task-main">
+          <span class="task-title">${escapeHtml(task.title)}</span>
+          <div class="task-meta">${escapeHtml(task.category)} · Deleted ${new Date(deletedAt).toLocaleDateString()}</div>
+        </div>
+        <div class="task-side trash-actions">
+          <button class="complete-task-btn" type="button" data-action="restore-task" data-task-id="${task.id}">Restore</button>
+          <button class="delete-btn" type="button" data-action="discard-trash" data-task-id="${task.id}">Delete permanently</button>
+        </div>
+      </div>
+    `)
+    .join('');
+}
+
+function restoreDeletedTask(taskId) {
+  const index = state.deletedTasks.findIndex((entry) => entry.task.id === taskId);
+  if (index < 0) return;
+  const [{ task }] = state.deletedTasks.splice(index, 1);
+  state.tasks.push(task);
+  persistState();
+  renderAll();
+  showToast('Task restored', 'success');
+}
+
+function discardDeletedTask(taskId) {
+  state.deletedTasks = state.deletedTasks.filter((entry) => entry.task.id !== taskId);
+  persistState();
+  renderAll();
+  showToast('Task permanently deleted', 'success');
 }
 
 function renderAll() {
   renderCategories();
   renderTaskList();
   renderStats();
+  renderTrashList();
+  renderPersonalization();
 }
 
 function updateCategoryFormValue() {
@@ -346,6 +569,15 @@ function updateCategoryFormValue() {
 function setMobileView(view) {
   state.mobileView = view;
   document.body.dataset.mobileView = view;
+  els.trashPanel.hidden = view !== 'trash';
+  els.profilePanel.hidden = view !== 'profile';
+}
+
+function setTaskFormOpen(isOpen) {
+  els.taskFormPanel.hidden = !isOpen;
+  if (window.matchMedia('(max-width: 860px)').matches) {
+    setMobileView(isOpen ? 'planner' : 'tasks');
+  }
 }
 
 function setMobileMenuOpen(isOpen) {
@@ -357,21 +589,81 @@ function setMobileMenuOpen(isOpen) {
 }
 
 function addCategory() {
-  const name = window.prompt('Add a new category name:');
-  if (!name) return;
-  const trimmed = name.trim();
-  if (!trimmed) return;
-  if (state.categories.some((category) => category.toLowerCase() === trimmed.toLowerCase())) {
-    showToast('Category already exists', 'warning');
+  state.categoryDialogMode = 'add';
+  state.pendingCategoryDelete = '';
+  els.categoryDialogTitle.textContent = 'Add category';
+  els.categoryDialogMessage.textContent = 'Create a category for a new area of focus.';
+  els.categoryDialogInputWrap.hidden = false;
+  els.categoryDialogInput.required = true;
+  els.categoryDialogInput.value = '';
+  els.confirmCategoryDialog.textContent = 'Add category';
+  els.categoryDialog.showModal();
+  els.categoryDialogInput.focus();
+}
+
+function prepareCategoryDeletion(category) {
+  if (state.categories.length <= 1) {
+    showToast('Keep at least one category in your planner', 'warning');
     return;
   }
 
-  state.categories.push(trimmed);
-  state.selectedCategory = trimmed;
+  const movedTasks = state.tasks.filter((task) => task.category === category).length;
+  const replacement = state.categories.find((item) => item !== category);
+  state.categoryDialogMode = 'delete';
+  state.pendingCategoryDelete = category;
+  els.categoryDialogTitle.textContent = `Delete ${category}?`;
+  els.categoryDialogMessage.textContent = movedTasks
+    ? `${movedTasks} task${movedTasks === 1 ? '' : 's'} will be moved to ${replacement} so they are kept.`
+    : 'This category will be removed from your planner.';
+  els.categoryDialogInputWrap.hidden = true;
+  els.categoryDialogInput.required = false;
+  els.confirmCategoryDialog.textContent = 'Delete category';
+  els.categoryDialog.showModal();
+}
+
+function handleCategoryDialogSubmit(event) {
+  event.preventDefault();
+
+  if (state.categoryDialogMode === 'add') {
+    const name = els.categoryDialogInput.value.trim();
+    if (!name) return;
+    if (state.categories.some((category) => category.toLowerCase() === name.toLowerCase())) {
+      showToast('Category already exists', 'warning');
+      return;
+    }
+
+    state.categories.push(name);
+    state.selectedCategory = name;
+    state.taskOriginCategory = name;
+    persistState();
+    seedForm();
+    els.taskCategory.value = name;
+    renderCustomFields();
+    renderAll();
+    els.categoryDialog.close();
+    showToast(`Category ${name} added`, 'success');
+    return;
+  }
+
+  const category = state.pendingCategoryDelete;
+  const replacement = state.categories.find((item) => item !== category);
+  if (!replacement) return;
+
+  state.tasks.forEach((task) => {
+    if (task.category === category) task.category = replacement;
+  });
+  state.deletedTasks.forEach((entry) => {
+    if (entry.task.category === category) entry.task.category = replacement;
+  });
+  state.categories = state.categories.filter((item) => item !== category);
+  if (state.selectedCategory === category) state.selectedCategory = 'All';
+  state.taskOriginCategory = state.selectedCategory;
   persistState();
-  renderAll();
+  seedForm();
   updateCategoryFormValue();
-  showToast(`Category ${trimmed} added`, 'success');
+  renderAll();
+  els.categoryDialog.close();
+  showToast(`Category removed. Tasks moved to ${replacement}.`, 'success');
 }
 
 function showToast(message, type = 'warning') {
@@ -384,6 +676,7 @@ function showToast(message, type = 'warning') {
 
 function createTask(event) {
   event.preventDefault();
+  unlockAlarmAudio();
 
   const title = els.taskTitle.value.trim();
   if (!title) {
@@ -417,6 +710,7 @@ function createTask(event) {
     notes: els.taskNotes.value.trim(),
     customFields,
     reminderMinutes: Number(els.taskReminderMinutes.value || 0),
+    reminderMode: els.taskReminderMode.value,
     recurrence: els.taskRecurrence.value,
     completed: false,
     createdAt: Date.now(),
@@ -430,6 +724,7 @@ function createTask(event) {
     setMobileView('tasks');
   }
   persistState();
+  runReminderCheck();
   renderAll();
   els.taskForm.reset();
   els.taskPriority.value = 'medium';
@@ -479,10 +774,14 @@ function rescheduleRecurringTask(task) {
 }
 
 function deleteTask(taskId) {
-  state.tasks = state.tasks.filter((task) => task.id !== taskId);
+  const taskIndex = state.tasks.findIndex((task) => task.id === taskId);
+  if (taskIndex < 0) return;
+  const [task] = state.tasks.splice(taskIndex, 1);
+  state.deletedTasks.push({ task, deletedAt: Date.now() });
+  purgeExpiredDeletedTasks();
   persistState();
   renderAll();
-  showToast('Task removed', 'success');
+  showToast('Task moved to Recently deleted', 'success');
 }
 
 function handleTaskInteraction(event) {
@@ -502,6 +801,17 @@ function handleTaskInteraction(event) {
 
 function attachCalendarListeners() {
   document.addEventListener('click', (event) => {
+    const actionButton = event.target.closest('[data-action]');
+    if (actionButton) {
+      const { action, taskId, categoryName } = actionButton.dataset;
+      if (action === 'toggle-task' || action === 'toggle') toggleTaskComplete(taskId);
+      if (action === 'delete-task') deleteTask(taskId);
+      if (action === 'restore-task') restoreDeletedTask(taskId);
+      if (action === 'discard-trash') discardDeletedTask(taskId);
+      if (action === 'delete-category') prepareCategoryDeletion(categoryName);
+      return;
+    }
+
     const categoryBtn = event.target.closest('[data-category]');
     if (categoryBtn) {
       const selected = categoryBtn.dataset.category;
@@ -520,26 +830,16 @@ function attachCalendarListeners() {
       return;
     }
 
-    if (event.target.matches('.task-checkbox')) {
-      toggleTaskComplete(event.target.dataset.taskId);
-    }
-
-    if (event.target.matches('.delete-btn')) {
-      deleteTask(event.target.dataset.taskId);
-    }
   });
 }
 
-function handleDateNavigation(direction) {
-  const currentDate = parseDateInput(state.selectedDate);
-  currentDate.setDate(currentDate.getDate() + direction);
-  state.selectedDate = formatDateInput(currentDate);
-  els.datePicker.value = state.selectedDate;
-  renderAll();
-}
-
 function exportData() {
-  const blob = new Blob([JSON.stringify({ categories: state.categories, tasks: state.tasks }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({
+    categories: state.categories,
+    tasks: state.tasks,
+    deletedTasks: state.deletedTasks,
+    profile: state.profile
+  }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -560,9 +860,14 @@ function importData(event) {
       if (!Array.isArray(parsed.tasks)) throw new Error('Invalid backup file');
       state.categories = Array.isArray(parsed.categories) && parsed.categories.length ? parsed.categories : state.categories;
       state.tasks = parsed.tasks;
+      state.deletedTasks = Array.isArray(parsed.deletedTasks) ? parsed.deletedTasks : [];
+      state.profile = { ...state.profile, ...(parsed.profile || {}) };
+      purgeExpiredDeletedTasks();
       persistState();
-      renderAll();
+      seedForm();
       updateCategoryFormValue();
+      loadProfileForm();
+      renderAll();
       showToast('Data imported successfully', 'success');
     } catch (error) {
       console.error('Import failed', error);
@@ -589,22 +894,41 @@ function requestNotifications() {
 }
 
 function playAlarmTone() {
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return;
+  const context = alarmAudioContext || unlockAlarmAudio();
+  if (!context) return;
 
-  const context = new AudioCtx();
-  const oscillator = context.createOscillator();
-  const gainNode = context.createGain();
-  oscillator.type = 'sine';
-  oscillator.frequency.value = 880;
-  gainNode.gain.value = 0.06;
-  oscillator.connect(gainNode);
-  gainNode.connect(context.destination);
-  oscillator.start();
-  setTimeout(() => {
-    oscillator.stop();
-    context.close();
-  }, 500);
+  const play = () => {
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+    oscillator.type = 'square';
+    oscillator.frequency.setValueAtTime(960, now);
+    oscillator.frequency.setValueAtTime(720, now + 0.3);
+    gainNode.gain.setValueAtTime(0.0001, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.16, now + 0.025);
+    gainNode.gain.setValueAtTime(0.16, now + 0.3);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.72);
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.72);
+  };
+
+  if (context.state === 'suspended') {
+    context.resume().then(play).catch((error) => console.warn('Alarm audio could not resume', error));
+  } else {
+    play();
+  }
+}
+
+function unlockAlarmAudio() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  if (!alarmAudioContext) alarmAudioContext = new AudioCtx();
+  if (alarmAudioContext.state === 'suspended') {
+    alarmAudioContext.resume().catch((error) => console.warn('Alarm audio could not unlock', error));
+  }
+  return alarmAudioContext;
 }
 
 function raiseReminder(task) {
@@ -612,15 +936,22 @@ function raiseReminder(task) {
 
   const priority = task.priority || 'medium';
   const due = new Date(`${task.date}T${task.time || '09:00'}:00`);
-  const shouldAlarm = Date.now() >= due.getTime();
-  if (!shouldAlarm) return;
+  const reminderMode = task.reminderMode || 'both';
+  const leadTime = Math.max(0, Number(task.reminderMinutes || 0)) * 60 * 1000;
+  if (reminderMode === 'none' || Date.now() < due.getTime() - leadTime) return;
 
   task.reminderTriggered = true;
   persistState();
-  notifyTask(task, priority);
-  showToast(`${task.title} is due and needs attention`, 'warning');
-  playAlarmTone();
-  if (priority === 'high') {
+  if (reminderMode === 'both' || reminderMode === 'notification') {
+    notifyTask(task, priority);
+  }
+  if (reminderMode === 'both' || reminderMode === 'alarm') {
+    showToast(`${task.title} is coming up`, 'warning');
+    playAlarmTone();
+  } else {
+    showToast(`Notification: ${task.title} is coming up`, 'warning');
+  }
+  if ((reminderMode === 'both' || reminderMode === 'alarm') && priority === 'high') {
     setTimeout(() => {
       playAlarmTone();
       showToast(`${task.title} high-priority alarm is repeating`, 'warning');
@@ -638,19 +969,11 @@ function notifyTask(task, priority) {
 }
 
 function runReminderCheck() {
-  const cutoff = Date.now() - 60 * 1000;
+  purgeExpiredDeletedTasks();
   state.tasks.forEach((task) => {
-    if (task.completed) return;
-    if (task.reminderTriggered && task.lastAlarmAt && task.lastAlarmAt < cutoff) {
-      task.reminderTriggered = false;
-    }
-    if (!task.reminderTriggered) {
-      const dueDate = task.date && task.time ? new Date(`${task.date}T${task.time}:00`) : null;
-      if (dueDate && Date.now() >= dueDate.getTime()) {
-        raiseReminder(task);
-      }
-    }
+    raiseReminder(task);
   });
+  persistState();
 }
 
 function setPomodoroTimer() {
@@ -701,11 +1024,15 @@ function resetPomodoro() {
 }
 
 function wireEvents() {
+  document.addEventListener('pointerdown', unlockAlarmAudio, { once: true });
+  document.addEventListener('keydown', unlockAlarmAudio, { once: true });
   els.taskForm.addEventListener('submit', createTask);
   els.clearTaskForm.addEventListener('click', () => {
     els.taskForm.reset();
+    els.taskCategory.value = state.taskOriginCategory === 'All' ? '' : state.taskOriginCategory;
     els.taskPriority.value = 'medium';
     els.taskReminderMinutes.value = '15';
+    els.taskReminderMode.value = 'both';
     els.taskRecurrence.value = 'none';
     els.taskDate.value = state.selectedDate;
     renderCustomFields();
@@ -716,18 +1043,40 @@ function wireEvents() {
     state.selectedPriority = event.target.value;
     renderTaskList();
   });
+  els.statsGrid.addEventListener('click', (event) => {
+    const card = event.target.closest('[data-task-filter]');
+    if (!card) return;
 
-  els.prevDayBtn.addEventListener('click', () => handleDateNavigation(-1));
-  els.nextDayBtn.addEventListener('click', () => handleDateNavigation(1));
-  els.todayBtn.addEventListener('click', () => {
-    state.selectedDate = formatDateInput(new Date());
-    els.datePicker.value = state.selectedDate;
+    state.selectedTaskStatus = card.dataset.taskFilter;
+    state.selectedPriority = 'all';
+    els.priorityFilter.value = 'all';
+    if (window.matchMedia('(max-width: 860px)').matches) {
+      setMobileView('tasks');
+    }
     renderAll();
+    els.taskPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
+  els.calendarPickerBtn.addEventListener('click', () => {
+    try {
+      if (typeof els.datePicker.showPicker === 'function') {
+        els.datePicker.showPicker();
+      } else {
+        els.datePicker.click();
+      }
+    } catch {
+      els.datePicker.focus();
+      els.datePicker.click();
+    }
+  });
   els.datePicker.addEventListener('change', (event) => {
     state.selectedDate = event.target.value;
     renderAll();
+  });
+  els.focusModeBtn.addEventListener('click', () => els.focusModeDialog.showModal());
+  els.closeFocusModeBtn.addEventListener('click', () => els.focusModeDialog.close());
+  els.focusModeDialog.addEventListener('click', (event) => {
+    if (event.target === els.focusModeDialog) els.focusModeDialog.close();
   });
 
   els.addCategoryBtn.addEventListener('click', addCategory);
@@ -738,13 +1087,18 @@ function wireEvents() {
     els.taskDate.value = state.selectedDate;
     els.taskPriority.value = 'medium';
     els.taskReminderMinutes.value = '15';
+    els.taskReminderMode.value = 'both';
     els.taskRecurrence.value = 'none';
     renderCustomFields();
-    if (window.matchMedia('(max-width: 860px)').matches) {
-      setMobileView('planner');
-    }
+    setTaskFormOpen(true);
     els.taskCategory.focus();
   });
+  els.closeTaskFormBtn.addEventListener('click', () => setTaskFormOpen(false));
+
+  els.categoryDialogForm.addEventListener('submit', handleCategoryDialogSubmit);
+  els.cancelCategoryDialog.addEventListener('click', () => els.categoryDialog.close());
+  els.profileForm.addEventListener('submit', saveProfile);
+  els.useSuggestionBtn.addEventListener('click', useSuggestion);
 
   els.menuToggle.addEventListener('click', () => {
     setMobileMenuOpen(!els.sidebar.classList.contains('is-open'));
@@ -758,6 +1112,7 @@ function wireEvents() {
       state.taskOriginCategory = 'All';
       renderAll();
     }
+    if (viewButton.dataset.mobileView === 'profile') loadProfileForm();
     setMobileView(viewButton.dataset.mobileView);
     setMobileMenuOpen(false);
     if (viewButton.dataset.mobileView === 'planner') {
@@ -778,9 +1133,12 @@ function wireEvents() {
     const taskCard = event.target.closest('.task-card');
     if (!taskCard) return;
     const taskId = taskCard.dataset.taskId;
-    if (event.target.dataset.action) return;
+    if (event.target.closest('[data-action]')) return;
     const task = state.tasks.find((entry) => entry.id === taskId);
     if (!task) return;
+    state.taskOriginCategory = task.category;
+    els.taskFormPanel.hidden = false;
+    if (window.matchMedia('(max-width: 860px)').matches) setMobileView('planner');
     els.taskTitle.value = task.title;
     els.taskCategory.value = task.category;
     els.taskPriority.value = task.priority;
@@ -788,6 +1146,7 @@ function wireEvents() {
     els.taskTime.value = task.time || '';
     els.taskNotes.value = task.notes || '';
     els.taskReminderMinutes.value = String(task.reminderMinutes || 0);
+    els.taskReminderMode.value = task.reminderMode || 'both';
     els.taskRecurrence.value = task.recurrence || 'none';
     renderCustomFields();
     const fieldEntries = Object.entries(task.customFields || {});
@@ -803,15 +1162,15 @@ function wireEvents() {
 
 function init() {
   loadState();
+  purgeExpiredDeletedTasks();
   state.selectedCategory = state.categories[0] || 'All';
-  if (window.matchMedia('(max-width: 860px)').matches) {
-    setMobileView('tasks');
-  }
+  setMobileView('tasks');
   els.datePicker.value = state.selectedDate;
   state.selectedPriority = 'all';
   els.priorityFilter.value = 'all';
   seedForm();
   updateCategoryFormValue();
+  loadProfileForm();
   renderAll();
   wireEvents();
   setInterval(() => {

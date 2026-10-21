@@ -126,6 +126,13 @@ button {
   gap: 10px;
 }
 
+.category-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 6px;
+}
+
 .category-pill {
   width: 100%;
   display: flex;
@@ -167,6 +174,25 @@ button {
   padding: 4px 8px;
   font-size: 0.75rem;
   color: var(--muted);
+}
+
+.category-delete,
+.close-form-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.06);
+  color: var(--muted);
+  font-size: 1.2rem;
+}
+
+.category-delete:hover,
+.close-form-button:hover {
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
 }
 
 .storage-panel {
@@ -274,6 +300,54 @@ button {
   gap: 12px;
 }
 
+.calendar-action {
+  position: relative;
+  width: 44px;
+  height: 44px;
+}
+
+.navbar-icon-button,
+.calendar-icon-button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.navbar-icon-button:hover,
+.calendar-icon-button:hover {
+  border-color: rgba(139, 92, 246, 0.65);
+  background: var(--primary-soft);
+}
+
+.navbar-icon-button svg,
+.calendar-icon-button svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.calendar-action #datePicker {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 44px;
+  height: 44px;
+  min-width: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(160px, 1fr));
@@ -282,11 +356,29 @@ button {
 }
 
 .stat-card {
+  width: 100%;
+  appearance: none;
   border-radius: 18px;
   padding: 18px 20px;
   border: 1px solid var(--border);
   background: rgba(17, 24, 39, 0.82);
   box-shadow: var(--shadow);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.stat-card:hover,
+.stat-card[aria-pressed="true"] {
+  transform: translateY(-2px);
+  border-color: rgba(139, 92, 246, 0.65);
+}
+
+.stat-card:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
 }
 
 .stat-card span {
@@ -317,6 +409,167 @@ button {
   border: 1px solid var(--border);
   border-radius: 20px;
   box-shadow: var(--shadow);
+}
+
+.suggestion-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 16px;
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  border-left: 3px solid var(--secondary);
+}
+
+.suggestion-panel .eyebrow,
+.suggestion-panel h2,
+.suggestion-panel p {
+  margin-top: 0;
+}
+
+.suggestion-panel h2 {
+  margin-bottom: 0;
+  font-size: 1rem;
+}
+
+.suggestion-panel > p {
+  grid-column: 1;
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+#useSuggestionBtn {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.complete-task-btn {
+  padding: 8px 10px;
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  border-radius: 9px;
+  background: rgba(34, 197, 94, 0.1);
+  color: #bbf7d0;
+  font-weight: 600;
+}
+
+.trash-actions .delete-btn {
+  max-width: 160px;
+}
+
+.page-panel {
+  margin-top: 18px;
+  padding: 18px;
+}
+
+.page-panel[hidden] {
+  display: none;
+}
+
+.profile-form h3 {
+  margin: 4px 0 0;
+  color: var(--text);
+}
+
+.contact-panel h2 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.social-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.social-link {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.social-link-placeholder {
+  opacity: 0.58;
+}
+
+.app-dialog {
+  width: min(92vw, 420px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #111827;
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.app-dialog::backdrop {
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+}
+
+.focus-mode-dialog {
+  width: min(92vw, 360px);
+}
+
+.focus-dialog-content {
+  padding: 20px;
+}
+
+.focus-mode-dialog .timer-circle {
+  margin-top: 18px;
+}
+
+.focus-mode-dialog .timer-actions > button {
+  flex: 1;
+}
+
+.dialog-form h2,
+.dialog-form p {
+  margin: 0;
+}
+
+.dialog-form p {
+  color: var(--muted);
+}
+
+.dialog-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.dialog-form input {
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.06);
+  color: var(--text);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .mobile-navbar {
@@ -736,35 +989,8 @@ button {
     justify-content: space-between;
   }
 
-  .mobile-navbar .date-nav {
-    width: 42px;
-    height: 42px;
-    justify-content: center;
-    padding: 0;
-    border: 0;
-    background: transparent;
-  }
-
-  .mobile-navbar .date-nav .nav-btn {
-    display: none;
-  }
-
-  .mobile-navbar #datePicker {
-    width: 42px;
-    height: 42px;
-    min-width: 42px;
-    flex: none;
-    padding: 0 4px;
-    color: transparent;
-    font-size: 0;
-    color-scheme: dark;
-  }
-
-  .mobile-navbar #datePicker::-webkit-calendar-picker-indicator {
-    width: 20px;
-    height: 20px;
-    margin: auto;
-    cursor: pointer;
+  .top-actions {
+    justify-content: flex-end;
   }
 
   body.menu-open {
@@ -783,6 +1009,20 @@ button {
 
   body[data-mobile-view="planner"] .pomodoro-panel {
     display: none;
+  }
+
+  body[data-mobile-view="trash"] .stats-grid,
+  body[data-mobile-view="trash"] .suggestion-panel,
+  body[data-mobile-view="trash"] .content-grid,
+  body[data-mobile-view="profile"] .stats-grid,
+  body[data-mobile-view="profile"] .suggestion-panel,
+  body[data-mobile-view="profile"] .content-grid {
+    display: none;
+  }
+
+  body[data-mobile-view="trash"] #trashPanel,
+  body[data-mobile-view="profile"] #profilePanel {
+    display: block;
   }
 
   .stats-grid {
@@ -811,6 +1051,16 @@ button {
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+  }
+
+  .suggestion-panel {
+    grid-template-columns: 1fr;
+  }
+
+  #useSuggestionBtn {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
   }
 
   .date-nav {

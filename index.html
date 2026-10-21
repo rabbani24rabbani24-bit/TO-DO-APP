@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20261021-nav2" />
   </head>
   <body data-mobile-view="tasks">
     <div class="app-shell">
@@ -22,12 +22,14 @@
 
         <nav class="mobile-drawer-links" aria-label="Planner views">
           <button class="mobile-drawer-link" type="button" data-mobile-view="overview">Overview</button>
+          <button class="mobile-drawer-link" type="button" data-mobile-view="trash">Recently deleted <span id="trashCount">0</span></button>
+          <button class="mobile-drawer-link" type="button" data-mobile-view="profile">Profile & goals</button>
         </nav>
 
         <div class="sidebar-section">
           <div class="section-head">
             <span>Categories</span>
-            <button id="addCategoryBtn" class="icon-button" title="Add category">+</button>
+            <button id="addCategoryBtn" class="icon-button" title="Add category" aria-label="Add category">+</button>
           </div>
           <div id="categoryList" class="category-list"></div>
         </div>
@@ -42,6 +44,10 @@
             </label>
           </div>
         </div>
+        <section class="sidebar-section contact-panel">
+          <h2>Connect</h2>
+          <div id="socialLinks" class="social-links"></div>
+        </section>
       </aside>
       <button id="menuScrim" class="menu-scrim" type="button" aria-label="Close menu" hidden></button>
 
@@ -51,43 +57,55 @@
             <span></span><span></span><span></span>
           </button>
           <h1>Focus Planner</h1>
-          <div class="date-nav">
-            <button id="prevDayBtn" class="nav-btn" aria-label="Previous day">‹</button>
-            <input id="datePicker" type="date" aria-label="Choose date" />
-            <button id="nextDayBtn" class="nav-btn" aria-label="Next day">›</button>
-          </div>
+          <button id="focusModeBtn" class="navbar-icon-button" type="button" title="Open Focus Mode" aria-label="Open Focus Mode" aria-haspopup="dialog">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 1.5M9 2h6M12 2v3M19 6l1.5-1.5"></path></svg>
+          </button>
         </header>
         <header class="topbar">
           <div class="top-actions">
-            <button id="todayBtn" class="secondary-btn">Today</button>
             <button id="newTaskBtn" class="primary-btn">+ New task</button>
+            <div class="calendar-action">
+              <button id="calendarPickerBtn" class="calendar-icon-button" type="button" title="Choose date" aria-label="Choose date">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"></path></svg>
+              </button>
+              <input id="datePicker" type="date" aria-label="Choose date" />
+            </div>
           </div>
         </header>
 
         <section class="stats-grid" aria-label="Selected category overview">
-          <div class="stat-card card-purple">
+          <button class="stat-card card-purple" type="button" data-task-filter="all" aria-controls="taskList" aria-label="Show all tasks for selected date">
             <span>Tasks added</span>
             <strong id="tasksAddedCount">0</strong>
-          </div>
-          <div class="stat-card card-blue">
+          </button>
+          <button class="stat-card card-blue" type="button" data-task-filter="completed" aria-controls="taskList" aria-label="Show completed tasks for selected date">
             <span>Completed</span>
             <strong id="completedCount">0</strong>
-          </div>
-          <div class="stat-card card-green">
+          </button>
+          <button class="stat-card card-green" type="button" data-task-filter="open" aria-controls="taskList" aria-label="Show open tasks for selected date">
             <span>Open tasks</span>
             <strong id="openCount">0</strong>
-          </div>
+          </button>
           <div class="stat-card card-orange">
             <span>Completion</span>
             <strong id="completionRate">0%</strong>
           </div>
         </section>
 
+        <section class="suggestion-panel card-panel" aria-live="polite">
+          <div>
+            <p class="eyebrow" id="greeting">Welcome to your planner</p>
+            <h2>Next best step</h2>
+          </div>
+          <p id="smartSuggestion"></p>
+          <button id="useSuggestionBtn" class="secondary-btn" type="button" hidden>Use suggestion</button>
+        </section>
+
         <section class="content-grid">
           <div class="task-panel card-panel">
             <div class="panel-header">
               <div>
-                <p class="eyebrow">Selected focus</p>
+                <p id="taskListMode" class="eyebrow">Tasks for selected date</p>
                 <h2 id="selectedCategoryTitle">Gym</h2>
               </div>
               <select id="priorityFilter">
@@ -102,12 +120,13 @@
           </div>
 
           <aside class="side-stack">
-            <div class="card-panel task-form-panel">
+            <div id="taskFormPanel" class="card-panel task-form-panel">
               <div class="panel-header compact">
                 <div>
                   <p class="eyebrow">Planner</p>
                   <h3>Create task</h3>
                 </div>
+                <button id="closeTaskFormBtn" class="icon-button close-form-button" type="button" aria-label="Close task form" title="Close task form">×</button>
               </div>
 
               <form id="taskForm" class="task-form">
@@ -163,6 +182,18 @@
                     </select>
                   </label>
                   <label>
+                    <span>Alert type</span>
+                    <select id="taskReminderMode">
+                      <option value="both" selected>Alarm + notification</option>
+                      <option value="alarm">Alarm only</option>
+                      <option value="notification">Notification only</option>
+                      <option value="none">No reminder</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="two-col">
+                  <label>
                     <span>Repeat</span>
                     <select id="taskRecurrence">
                       <option value="none">No repeat</option>
@@ -178,31 +209,74 @@
               </form>
             </div>
 
-            <div class="card-panel pomodoro-panel">
-              <div class="panel-header compact">
-                <div>
-                  <p class="eyebrow">Focus mode</p>
-                  <h3>Pomodoro</h3>
-                </div>
-              </div>
-
-              <div class="timer-circle">
-                <span id="timerDisplay">25:00</span>
-              </div>
-
-              <div class="timer-actions">
-                <button id="startPomodoroBtn" class="primary-btn">Start</button>
-                <button id="resetPomodoroBtn" class="secondary-btn">Reset</button>
-              </div>
-            </div>
           </aside>
+        </section>
+
+        <section id="trashPanel" class="card-panel page-panel" aria-label="Recently deleted tasks">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Archive</p>
+              <h2>Recently deleted</h2>
+            </div>
+          </div>
+          <div id="trashList" class="task-list"></div>
+        </section>
+
+        <section id="profilePanel" class="card-panel page-panel" aria-label="Profile and goals">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Personal settings</p>
+              <h2>Profile & goals</h2>
+            </div>
+          </div>
+          <form id="profileForm" class="task-form profile-form">
+            <label><span>Your name</span><input id="profileName" type="text" maxlength="60" placeholder="Name shown in your planner" /></label>
+            <label><span>Main goal</span><textarea id="profileGoal" rows="3" maxlength="240" placeholder="What are you working toward?"></textarea></label>
+            <h3>Contact links</h3>
+            <div class="two-col">
+              <label><span>Instagram URL</span><input id="profileInstagram" type="url" placeholder="https://instagram.com/yourname" /></label>
+              <label><span>LinkedIn URL</span><input id="profileLinkedIn" type="url" placeholder="https://linkedin.com/in/yourname" /></label>
+            </div>
+            <div class="two-col">
+              <label><span>X profile URL</span><input id="profileX" type="url" placeholder="https://x.com/yourname" /></label>
+              <label><span>Contact email</span><input id="profileEmail" type="email" placeholder="you@example.com" /></label>
+            </div>
+            <button type="submit" class="primary-btn">Save profile</button>
+          </form>
         </section>
       </main>
     </div>
 
     <div id="toastContainer" class="toast-container"></div>
+    <dialog id="categoryDialog" class="app-dialog">
+      <form id="categoryDialogForm" class="dialog-form">
+        <h2 id="categoryDialogTitle">Add category</h2>
+        <p id="categoryDialogMessage"></p>
+        <label id="categoryDialogInputWrap"><span>Category name</span><input id="categoryDialogInput" type="text" maxlength="40" /></label>
+        <div class="dialog-actions">
+          <button id="cancelCategoryDialog" class="secondary-btn" type="button">Cancel</button>
+          <button id="confirmCategoryDialog" class="primary-btn" type="submit">Add category</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="focusModeDialog" class="app-dialog focus-mode-dialog" aria-labelledby="focusModeTitle">
+      <div class="focus-dialog-content">
+        <div class="panel-header compact">
+          <div>
+            <p class="eyebrow">Focus mode</p>
+            <h2 id="focusModeTitle">Pomodoro</h2>
+          </div>
+          <button id="closeFocusModeBtn" class="icon-button close-form-button" type="button" aria-label="Close Focus Mode">×</button>
+        </div>
+        <div class="timer-circle"><span id="timerDisplay">25:00</span></div>
+        <div class="timer-actions">
+          <button id="startPomodoroBtn" class="primary-btn">Start</button>
+          <button id="resetPomodoroBtn" class="secondary-btn">Reset</button>
+        </div>
+      </div>
+    </dialog>
     <audio id="alarmSound" preload="auto"></audio>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=20261021-nav2"></script>
   </body>
 </html>
