@@ -37,6 +37,8 @@ const state = {
   selectedPriority: 'all',
   selectedTaskStatus: 'all',
   mobileView: 'tasks',
+  currentPage: 'home',
+  pageHistory: [],
   taskOriginCategory: 'Gym',
   tasks: [],
   deletedTasks: [],
@@ -44,16 +46,70 @@ const state = {
   categoryDialogMode: 'add',
   pendingCategoryDelete: '',
   notificationPermission: 'default',
+  challengeTemplates: [
+    { id: 'week-1', label: 'Challenge Week 1', durationDays: 7 },
+    { id: 'week-2', label: 'Challenge Week 2', durationDays: 14 },
+    { id: '21-days', label: '21 Days Challenge', durationDays: 21 },
+    { id: '1-month', label: '1 Month Challenge', durationDays: 30 }
+  ],
+  customChallenges: [],
+  activeChallenge: null,
+  pomodoroHistory: [],
   pomodoro: {
     isRunning: false,
     minutes: 25,
     remainingSeconds: 25 * 60,
+    endTime: null,
     intervalId: null
   }
 };
 
 const els = {
-  categoryList: document.getElementById('categoryList'),
+  categoryQuickSelect: document.getElementById('categoryQuickSelect'),
+  appPages: [...document.querySelectorAll('[data-app-page].app-page')],
+  pageBackButtons: [...document.querySelectorAll('[data-back]')],
+  homeGreeting: document.getElementById('homeGreeting'),
+  homeDateLabel: document.getElementById('homeDateLabel'),
+  homeGoal: document.getElementById('homeGoal'),
+  homeTaskCount: document.getElementById('homeTaskCount'),
+  homeCompletedCount: document.getElementById('homeCompletedCount'),
+  homeFocusCount: document.getElementById('homeFocusCount'),
+  homeChallengeCard: document.getElementById('homeChallengeCard'),
+  homeChallengeTitle: document.getElementById('homeChallengeTitle'),
+  homeChallengeStatus: document.getElementById('homeChallengeStatus'),
+  homeChallengeBar: document.getElementById('homeChallengeBar'),
+  homeChallengeTrack: document.querySelector('#homeChallengeCard .challenge-progress-track'),
+  homeChallengeDay: document.getElementById('homeChallengeDay'),
+  homeChallengeDates: document.getElementById('homeChallengeDates'),
+  reportRange: document.getElementById('reportRange'),
+  reportTaskCount: document.getElementById('reportTaskCount'),
+  reportCompletedCount: document.getElementById('reportCompletedCount'),
+  reportCompletionRate: document.getElementById('reportCompletionRate'),
+  categoryReportChart: document.getElementById('categoryReportChart'),
+  activityReportChart: document.getElementById('activityReportChart'),
+  challengeSelect: document.getElementById('challengeSelect'),
+  challengeProgressPanel: document.getElementById('challengeProgressPanel'),
+  challengeProgressTitle: document.getElementById('challengeProgressTitle'),
+  challengeProgressStatus: document.getElementById('challengeProgressStatus'),
+  challengeProgressTrack: document.querySelector('.challenge-progress-track'),
+  challengeProgressBar: document.getElementById('challengeProgressBar'),
+  challengeProgressDay: document.getElementById('challengeProgressDay'),
+  challengeProgressDates: document.getElementById('challengeProgressDates'),
+  customChallengeDialog: document.getElementById('customChallengeDialog'),
+  customChallengeForm: document.getElementById('customChallengeForm'),
+  customChallengeName: document.getElementById('customChallengeName'),
+  customChallengeDays: document.getElementById('customChallengeDays'),
+  cancelCustomChallenge: document.getElementById('cancelCustomChallenge'),
+  customPomodoroDialog: document.getElementById('customPomodoroDialog'),
+  customPomodoroForm: document.getElementById('customPomodoroForm'),
+  customPomodoroMinutes: document.getElementById('customPomodoroMinutes'),
+  cancelCustomPomodoro: document.getElementById('cancelCustomPomodoro'),
+  pomodoroDurationSelect: document.getElementById('pomodoroDurationSelect'),
+  pomodoroTodayCount: document.getElementById('pomodoroTodayCount'),
+  pomodoroWeekCount: document.getElementById('pomodoroWeekCount'),
+  pomodoroMonthCount: document.getElementById('pomodoroMonthCount'),
+  pomodoroHistorySummary: document.getElementById('pomodoroHistorySummary'),
+  pomodoroHistoryList: document.getElementById('pomodoroHistoryList'),
   selectedCategoryTitle: document.getElementById('selectedCategoryTitle'),
   taskPanel: document.querySelector('.task-panel'),
   taskList: document.getElementById('taskList'),
@@ -79,6 +135,7 @@ const els = {
   focusModeDialog: document.getElementById('focusModeDialog'),
   closeFocusModeBtn: document.getElementById('closeFocusModeBtn'),
   addCategoryBtn: document.getElementById('addCategoryBtn'),
+  deleteCategoryBtn: document.getElementById('deleteCategoryBtn'),
   newTaskBtn: document.getElementById('newTaskBtn'),
   priorityFilter: document.getElementById('priorityFilter'),
   tasksAddedCount: document.getElementById('tasksAddedCount'),
@@ -153,6 +210,19 @@ function formatDateLabel(dateString) {
   }).format(date);
 }
 
+function normalizePomodoroHistory(history) {
+  if (!Array.isArray(history)) return [];
+  return history.filter((entry) =>
+    entry &&
+    typeof entry === 'object' &&
+    Number.isFinite(entry.completedAt) &&
+    entry.completedAt >= 0 &&
+    entry.completedAt <= 8640000000000000 &&
+    Number.isInteger(entry.minutes) &&
+    entry.minutes >= 1 &&
+    entry.minutes <= 180);
+}
+
 function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
@@ -199,6 +269,13 @@ function loadState() {
     state.tasks = Array.isArray(saved.tasks) ? saved.tasks : [];
     state.deletedTasks = Array.isArray(saved.deletedTasks) ? saved.deletedTasks : [];
     state.profile = { ...state.profile, ...(saved.profile || {}) };
+    state.customChallenges = Array.isArray(saved.customChallenges) ? saved.customChallenges : [];
+    state.activeChallenge = saved.activeChallenge || null;
+    state.pomodoroHistory = normalizePomodoroHistory(saved.pomodoroHistory);
+    state.pomodoro.minutes = Number.isInteger(saved.pomodoroMinutes)
+      ? Math.min(180, Math.max(1, saved.pomodoroMinutes))
+      : 25;
+    state.pomodoro.remainingSeconds = state.pomodoro.minutes * 60;
   } catch (error) {
     console.error('Failed to parse saved state', error);
     state.tasks = [];
@@ -210,7 +287,11 @@ function persistState() {
     categories: state.categories,
     tasks: state.tasks,
     deletedTasks: state.deletedTasks,
-    profile: state.profile
+    profile: state.profile,
+    customChallenges: state.customChallenges,
+    activeChallenge: state.activeChallenge,
+    pomodoroHistory: state.pomodoroHistory,
+    pomodoroMinutes: state.pomodoro.minutes
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
 }
@@ -283,44 +364,148 @@ function getVisibleTasks() {
   });
 }
 
-function renderCategories() {
-  const totalCounts = {};
-  state.categories.forEach((category) => {
-    totalCounts[category] = state.tasks.filter((task) => task.category === category).length;
-  });
+function buildChallengeOptions() {
+  const challengeOptions = [
+    { id: '', label: 'No challenge' },
+    ...state.challengeTemplates,
+    ...state.customChallenges,
+    { id: 'custom', label: 'Custom timeline...' }
+  ];
 
-  const categoryButtons = state.categories
-    .map((category) => {
-      const label = escapeHtml(category);
-      return `
-        <div class="category-row">
-          <button class="category-pill ${state.selectedCategory === category ? 'active' : ''}" data-category="${label}" type="button">
-            <span class="category-meta">
-              <span class="category-dot" style="background:${getCategoryColor(category)}"></span>
-              <span>${label}</span>
-            </span>
-            <span class="category-count">${totalCounts[category] || 0}</span>
-          </button>
-          <button class="category-delete" type="button" data-action="delete-category" data-category-name="${label}" aria-label="Delete ${label} category" title="Delete ${label}">×</button>
-        </div>
-      `;
-    })
+  if (!els.challengeSelect) return;
+
+  const selectedValue = state.activeChallenge ? state.activeChallenge.id : '';
+  els.challengeSelect.innerHTML = challengeOptions
+    .map((challenge) => `<option value="${challenge.id}">${escapeHtml(challenge.label)}</option>`)
     .join('');
 
-  els.categoryList.innerHTML = categoryButtons;
+  const customChoice = state.customChallenges.find((challenge) => challenge.id === selectedValue);
+  if (state.activeChallenge && customChoice) {
+    els.challengeSelect.value = customChoice.id;
+  } else if (state.activeChallenge) {
+    els.challengeSelect.value = state.activeChallenge.id;
+  } else {
+    els.challengeSelect.value = '';
+  }
+}
+
+function renderPomodoroDuration() {
+  const duration = state.pomodoro.minutes;
+  let option = els.pomodoroDurationSelect.querySelector('option[value="custom-selected"]');
+  if (duration !== 15 && duration !== 25 && duration !== 50) {
+    if (!option) {
+      option = document.createElement('option');
+      option.value = 'custom-selected';
+      els.pomodoroDurationSelect.insertBefore(option, els.pomodoroDurationSelect.lastElementChild);
+    }
+    option.textContent = `Custom (${duration} minute${duration === 1 ? '' : 's'})`;
+    els.pomodoroDurationSelect.value = 'custom-selected';
+  } else {
+    if (option) option.remove();
+    els.pomodoroDurationSelect.value = String(duration);
+  }
+}
+
+function renderPomodoroHistory() {
+  const now = new Date();
+  const today = formatDateInput(now);
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayFromMonday = (weekStart.getDay() + 6) % 7;
+  weekStart.setDate(weekStart.getDate() - dayFromMonday);
+  const weekStartKey = formatDateInput(weekStart);
+  const monthKey = today.slice(0, 7);
+  const history = [...state.pomodoroHistory].sort((a, b) => b.completedAt - a.completedAt);
+  const completedToday = history.filter((entry) => formatDateInput(new Date(entry.completedAt)) === today);
+  const completedThisWeek = history.filter((entry) => formatDateInput(new Date(entry.completedAt)) >= weekStartKey);
+  const completedThisMonth = history.filter((entry) => formatDateInput(new Date(entry.completedAt)).slice(0, 7) === monthKey);
+
+  els.pomodoroTodayCount.textContent = String(completedToday.length);
+  els.pomodoroWeekCount.textContent = String(completedThisWeek.length);
+  els.pomodoroMonthCount.textContent = String(completedThisMonth.length);
+  const focusedMinutes = completedToday.reduce((total, entry) => total + entry.minutes, 0);
+  els.pomodoroHistorySummary.textContent = focusedMinutes
+    ? `${focusedMinutes} focused minute${focusedMinutes === 1 ? '' : 's'} today`
+    : 'Complete a focus session to start building your history.';
+  const recentSessions = history.slice(0, 5);
+  els.pomodoroHistoryList.innerHTML = recentSessions.map((entry) => {
+    const completedAt = new Date(entry.completedAt);
+    const dateLabel = formatDateInput(completedAt) === today
+      ? 'Today'
+      : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(completedAt);
+    const timeLabel = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(completedAt);
+    return `<li>${dateLabel}, ${timeLabel} · ${entry.minutes} min</li>`;
+  }).join('');
+  if (!recentSessions.length) {
+    els.pomodoroHistoryList.innerHTML = '';
+  }
+}
+
+function renderChallengeProgress() {
+  const challenge = state.activeChallenge;
+  if (!challenge) {
+    els.challengeProgressPanel.hidden = true;
+    els.homeChallengeCard.hidden = true;
+    return;
+  }
+
+  const progress = getChallengeProgress(challenge);
+  els.challengeProgressPanel.hidden = false;
+  els.challengeProgressTitle.textContent = challenge.label;
+  els.challengeProgressStatus.textContent = progress.isComplete ? 'Complete' : `${progress.percent}% complete`;
+  els.challengeProgressTrack.setAttribute('aria-valuenow', String(progress.percent));
+  els.challengeProgressBar.style.width = `${progress.percent}%`;
+  els.challengeProgressDay.textContent = progress.isComplete
+    ? `${progress.durationDays} of ${progress.durationDays} days`
+    : `Day ${progress.challengeDay} of ${progress.durationDays}`;
+  els.challengeProgressDates.textContent = `Started ${formatDateLabel(progress.startDate)} · Ends ${formatDateLabel(progress.endDate)}`;
+
+  els.homeChallengeCard.hidden = false;
+  els.homeChallengeTitle.textContent = challenge.label;
+  els.homeChallengeStatus.textContent = progress.isComplete ? 'Complete' : `${progress.percent}% complete`;
+  els.homeChallengeTrack.setAttribute('aria-valuenow', String(progress.percent));
+  els.homeChallengeBar.style.width = `${progress.percent}%`;
+  els.homeChallengeDay.textContent = progress.isComplete
+    ? `${progress.durationDays} of ${progress.durationDays} days`
+    : `Day ${progress.challengeDay} of ${progress.durationDays}`;
+  els.homeChallengeDates.textContent = `Started ${formatDateLabel(progress.startDate)} · Ends ${formatDateLabel(progress.endDate)}`;
+}
+
+function getChallengeProgress(challenge) {
+  const durationDays = Math.max(1, Number(challenge.durationDays) || 1);
+  const startDate = challenge.startedOn || formatDateInput(new Date());
+  const today = formatDateInput(new Date());
+  const elapsedDays = Math.max(
+    0,
+    Math.floor((parseDateInput(today) - parseDateInput(startDate)) / 86400000)
+  );
+  const challengeDay = Math.min(durationDays, elapsedDays + 1);
+  const isComplete = elapsedDays >= durationDays;
+  return {
+    durationDays,
+    startDate,
+    endDate: formatDateInput(new Date(parseDateInput(startDate).getTime() + (durationDays - 1) * 86400000)),
+    challengeDay,
+    isComplete,
+    percent: isComplete ? 100 : Math.round((elapsedDays / durationDays) * 100)
+  };
+}
+
+function renderCategoryQuickSelect() {
+  if (!els.categoryQuickSelect) return;
+
+  if (!state.categories.includes(state.selectedCategory) && state.selectedCategory !== 'All') {
+    state.selectedCategory = 'All';
+  }
+  const currentValue = state.selectedCategory;
+  els.categoryQuickSelect.innerHTML = ['All', ...state.categories]
+    .map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`)
+    .join('');
+  els.categoryQuickSelect.value = currentValue;
+  els.deleteCategoryBtn.disabled = state.selectedCategory === 'All' || state.categories.length <= 1;
+}
+
+function renderCategories() {
   els.selectedCategoryTitle.textContent = state.selectedCategory;
-
-  const allButton = `
-    <button class="category-pill ${state.selectedCategory === 'All' ? 'active' : ''}" data-category="All" type="button">
-      <span class="category-meta">
-        <span class="category-dot" style="background:#a78bfa"></span>
-        <span>All</span>
-      </span>
-      <span class="category-count">${state.tasks.length}</span>
-    </button>
-  `;
-
-  els.categoryList.innerHTML = allButton + categoryButtons;
   els.trashCount.textContent = String(state.deletedTasks.length);
 }
 
@@ -472,6 +657,163 @@ function renderPersonalization() {
   }
 }
 
+function renderHomePage() {
+  const hour = new Date().getHours();
+  const timeGreeting = hour >= 5 && hour < 12
+    ? 'Good morning'
+    : hour >= 12 && hour < 17
+      ? 'Good afternoon'
+      : hour >= 17 && hour < 22
+        ? 'Good evening'
+        : 'Good night';
+  const name = state.profile.name.trim();
+  const today = formatDateInput(new Date());
+  const todaysTasks = state.tasks.filter((task) => task.date === today);
+  const completedToday = todaysTasks.filter((task) => task.completed).length;
+  const focusedToday = state.pomodoroHistory.filter((entry) =>
+    formatDateInput(new Date(entry.completedAt)) === today).length;
+  els.homeGreeting.textContent = name ? `${timeGreeting}, ${name}` : timeGreeting;
+  els.homeDateLabel.textContent = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric'
+  }).format(new Date());
+  els.homeGoal.textContent = state.profile.goal.trim()
+    ? `Your goal: ${state.profile.goal.trim()}`
+    : 'Make today count, one focused step at a time.';
+  els.homeTaskCount.textContent = String(todaysTasks.length);
+  els.homeCompletedCount.textContent = String(completedToday);
+  els.homeFocusCount.textContent = String(focusedToday);
+}
+
+function getReportDateRange() {
+  const today = parseDateInput(formatDateInput(new Date()));
+  const range = els.reportRange.value;
+  if (range === 'all') return { start: '', end: formatDateInput(today) };
+  const days = Number(range) || 30;
+  const start = new Date(today);
+  start.setDate(start.getDate() - days + 1);
+  return { start: formatDateInput(start), end: formatDateInput(today) };
+}
+
+function createReportEmpty(message) {
+  const empty = document.createElement('p');
+  empty.className = 'report-empty';
+  empty.textContent = message;
+  return empty;
+}
+
+function renderReportsPage() {
+  const { start, end } = getReportDateRange();
+  const tasks = state.tasks.filter((task) =>
+    task.date <= end && (!start || task.date >= start));
+  const completed = tasks.filter((task) => task.completed).length;
+  els.reportTaskCount.textContent = String(tasks.length);
+  els.reportCompletedCount.textContent = String(completed);
+  els.reportCompletionRate.textContent = `${tasks.length ? Math.round((completed / tasks.length) * 100) : 0}%`;
+
+  const categoryCounts = state.categories.map((category) => ({
+    category,
+    count: tasks.filter((task) => task.category === category).length
+  }));
+  const maxCategoryCount = Math.max(1, ...categoryCounts.map((entry) => entry.count));
+  els.categoryReportChart.replaceChildren();
+  if (tasks.length === 0) {
+    els.categoryReportChart.append(createReportEmpty('No task data for this time range yet.'));
+  } else {
+    categoryCounts.forEach(({ category, count }) => {
+      const row = document.createElement('div');
+      row.className = 'bar-chart-row';
+      const label = document.createElement('span');
+      label.className = 'bar-chart-label';
+      label.textContent = category;
+      const track = document.createElement('span');
+      track.className = 'bar-chart-track';
+      const fill = document.createElement('span');
+      fill.className = 'bar-chart-fill';
+      fill.style.width = `${(count / maxCategoryCount) * 100}%`;
+      fill.style.background = `linear-gradient(90deg, ${getCategoryColor(category)}, var(--blue))`;
+      track.append(fill);
+      const value = document.createElement('strong');
+      value.className = 'bar-chart-value';
+      value.textContent = String(count);
+      row.append(label, track, value);
+      els.categoryReportChart.append(row);
+    });
+  }
+
+  const activityBuckets = getActivityBuckets();
+  const maxActivity = Math.max(1, ...activityBuckets.map((bucket) => bucket.completed));
+  els.activityReportChart.replaceChildren();
+  if (tasks.length === 0) {
+    els.activityReportChart.append(createReportEmpty('Completed tasks will appear here.'));
+  } else {
+    activityBuckets.forEach((bucket) => {
+      const column = document.createElement('div');
+      column.className = 'activity-bar';
+      const value = document.createElement('span');
+      value.className = 'activity-bar-value';
+      value.textContent = String(bucket.completed);
+      const track = document.createElement('span');
+      track.className = 'activity-bar-track';
+      const fill = document.createElement('span');
+      fill.className = 'activity-bar-fill';
+      fill.style.height = `${bucket.completed ? Math.max(4, (bucket.completed / maxActivity) * 100) : 0}%`;
+      track.append(fill);
+      track.setAttribute('aria-label', `${bucket.label}: ${bucket.completed} completed`);
+      const label = document.createElement('span');
+      label.className = 'activity-bar-label';
+      label.textContent = bucket.label;
+      column.append(value, track, label);
+      els.activityReportChart.append(column);
+    });
+  }
+}
+
+function getActivityBuckets() {
+  const range = els.reportRange.value;
+  const today = parseDateInput(formatDateInput(new Date()));
+  if (range === 'all') {
+    return Array.from({ length: 6 }, (_, index) => {
+      const month = new Date(today.getFullYear(), today.getMonth() - 5 + index, 1);
+      const monthKey = formatDateInput(month).slice(0, 7);
+      const completed = state.tasks.filter((task) =>
+        task.completed && task.date.slice(0, 7) === monthKey).length;
+      return {
+        label: new Intl.DateTimeFormat('en-US', { month: 'short' }).format(month),
+        completed
+      };
+    });
+  }
+
+  if (range === '7') {
+    return Array.from({ length: 7 }, (_, index) => {
+      const day = new Date(today);
+      day.setDate(day.getDate() - 6 + index);
+      const key = formatDateInput(day);
+      return {
+        label: new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(day),
+        completed: state.tasks.filter((task) => task.completed && task.date === key).length
+      };
+    });
+  }
+
+  return Array.from({ length: 5 }, (_, index) => {
+    const firstDate = new Date(today);
+    firstDate.setDate(firstDate.getDate() - 29 + index * 6);
+    const lastDate = new Date(firstDate);
+    lastDate.setDate(lastDate.getDate() + 5);
+    if (index === 4) lastDate.setTime(today.getTime());
+    const firstKey = formatDateInput(firstDate);
+    const lastKey = formatDateInput(lastDate);
+    return {
+      label: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(firstDate),
+      completed: state.tasks.filter((task) =>
+        task.completed && task.date >= firstKey && task.date <= lastKey).length
+    };
+  });
+}
+
 function loadProfileForm() {
   els.profileName.value = state.profile.name || '';
   els.profileGoal.value = state.profile.goal || '';
@@ -494,6 +836,20 @@ function saveProfile(event) {
   persistState();
   renderAll();
   showToast('Profile and goal saved', 'success');
+}
+
+function persistProfileDraft() {
+  state.profile = {
+    name: els.profileName.value.trim(),
+    goal: els.profileGoal.value.trim(),
+    instagram: els.profileInstagram.value.trim(),
+    linkedIn: els.profileLinkedIn.value.trim(),
+    x: els.profileX.value.trim(),
+    email: els.profileEmail.value.trim()
+  };
+  persistState();
+  renderPersonalization();
+  renderHomePage();
 }
 
 function useSuggestion() {
@@ -554,11 +910,18 @@ function discardDeletedTask(taskId) {
 }
 
 function renderAll() {
+  renderCategoryQuickSelect();
+  buildChallengeOptions();
+  renderChallengeProgress();
+  renderPomodoroDuration();
+  renderPomodoroHistory();
   renderCategories();
   renderTaskList();
   renderStats();
   renderTrashList();
   renderPersonalization();
+  renderHomePage();
+  renderReportsPage();
 }
 
 function updateCategoryFormValue() {
@@ -569,8 +932,6 @@ function updateCategoryFormValue() {
 function setMobileView(view) {
   state.mobileView = view;
   document.body.dataset.mobileView = view;
-  els.trashPanel.hidden = view !== 'trash';
-  els.profilePanel.hidden = view !== 'profile';
 }
 
 function setTaskFormOpen(isOpen) {
@@ -586,6 +947,39 @@ function setMobileMenuOpen(isOpen) {
   els.menuToggle.setAttribute('aria-expanded', String(isOpen));
   els.menuToggle.setAttribute('aria-label', isOpen ? 'Close categories menu' : 'Open categories menu');
   document.body.classList.toggle('menu-open', isOpen);
+}
+
+function navigateAppPage(page, recordHistory = true) {
+  const target = els.appPages.find((item) => item.dataset.appPage === page);
+  if (!target) return;
+  if (page !== state.currentPage && recordHistory) {
+    state.pageHistory.push(state.currentPage);
+  }
+  state.currentPage = page;
+  document.body.dataset.appPage = page;
+  els.appPages.forEach((item) => {
+    item.hidden = item !== target;
+  });
+  setMobileView(page);
+  if (page === 'profile') loadProfileForm();
+  if (page === 'tasks') {
+    els.taskFormPanel.hidden = true;
+    setMobileView('tasks');
+  }
+  els.pageBackButtons.forEach((button) => {
+    button.disabled = state.pageHistory.length === 0;
+  });
+  setMobileMenuOpen(false);
+  renderAll();
+}
+
+function goBack() {
+  const previousPage = state.pageHistory.pop();
+  if (previousPage) {
+    navigateAppPage(previousPage, false);
+  } else if (state.currentPage !== 'home') {
+    navigateAppPage('home', false);
+  }
 }
 
 function addCategory() {
@@ -838,7 +1232,11 @@ function exportData() {
     categories: state.categories,
     tasks: state.tasks,
     deletedTasks: state.deletedTasks,
-    profile: state.profile
+    profile: state.profile,
+    customChallenges: state.customChallenges,
+    activeChallenge: state.activeChallenge,
+    pomodoroHistory: state.pomodoroHistory,
+    pomodoroMinutes: state.pomodoro.minutes
   }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -862,6 +1260,13 @@ function importData(event) {
       state.tasks = parsed.tasks;
       state.deletedTasks = Array.isArray(parsed.deletedTasks) ? parsed.deletedTasks : [];
       state.profile = { ...state.profile, ...(parsed.profile || {}) };
+      state.customChallenges = Array.isArray(parsed.customChallenges) ? parsed.customChallenges : [];
+      state.activeChallenge = parsed.activeChallenge || null;
+      state.pomodoroHistory = normalizePomodoroHistory(parsed.pomodoroHistory);
+      state.pomodoro.minutes = Number.isInteger(parsed.pomodoroMinutes)
+        ? Math.min(180, Math.max(1, parsed.pomodoroMinutes))
+        : 25;
+      state.pomodoro.remainingSeconds = state.pomodoro.minutes * 60;
       purgeExpiredDeletedTasks();
       persistState();
       seedForm();
@@ -977,12 +1382,11 @@ function runReminderCheck() {
 }
 
 function setPomodoroTimer() {
-  const minutes = state.pomodoro.minutes;
-  const seconds = state.pomodoro.remainingSeconds;
-  const totalSeconds = minutes * 60;
-  const remaining = Math.max(0, totalSeconds - seconds);
-  const display = formatTimer(remaining);
-  els.timerDisplay.textContent = display;
+  const total = state.pomodoro.minutes * 60;
+  const remaining = Number.isFinite(state.pomodoro.remainingSeconds)
+    ? Math.max(0, state.pomodoro.remainingSeconds)
+    : total;
+  els.timerDisplay.textContent = formatTimer(Math.min(total, remaining));
 }
 
 function formatTimer(totalSeconds) {
@@ -992,35 +1396,75 @@ function formatTimer(totalSeconds) {
 }
 
 function startPomodoro() {
-  if (state.pomodoro.isRunning) return;
-
+  if (state.pomodoro.isRunning) {
+    pausePomodoro();
+    return;
+  }
+  const total = state.pomodoro.minutes * 60;
+  if (!Number.isFinite(state.pomodoro.remainingSeconds) || state.pomodoro.remainingSeconds <= 0) {
+    state.pomodoro.remainingSeconds = total;
+  }
   state.pomodoro.isRunning = true;
-  state.pomodoro.intervalId = setInterval(() => {
-    state.pomodoro.remainingSeconds += 1;
-    const total = state.pomodoro.minutes * 60;
-    const remaining = total - state.pomodoro.remainingSeconds;
-    if (remaining <= 0) {
-      clearInterval(state.pomodoro.intervalId);
-      state.pomodoro.isRunning = false;
-      state.pomodoro.remainingSeconds = state.pomodoro.minutes * 60;
-      showToast('Pomodoro complete. Great focus session.', 'success');
-      playAlarmTone();
-      els.timerDisplay.textContent = formatTimer(0);
-      return;
-    }
-    els.timerDisplay.textContent = formatTimer(remaining);
-  }, 1000);
-
+  state.pomodoro.endTime = Date.now() + state.pomodoro.remainingSeconds * 1000;
+  els.startPomodoroBtn.textContent = 'Pause';
+  els.pomodoroDurationSelect.disabled = true;
+  tickPomodoro();
+  state.pomodoro.intervalId = setInterval(tickPomodoro, 250);
   showToast('Pomodoro started', 'success');
+}
+
+function tickPomodoro() {
+  if (!state.pomodoro.isRunning || !state.pomodoro.endTime) return;
+  state.pomodoro.remainingSeconds = Math.max(
+    0,
+    Math.ceil((state.pomodoro.endTime - Date.now()) / 1000)
+  );
+  els.timerDisplay.textContent = formatTimer(state.pomodoro.remainingSeconds);
+
+  if (state.pomodoro.remainingSeconds === 0) {
+    if (state.pomodoro.intervalId) clearInterval(state.pomodoro.intervalId);
+    state.pomodoro.intervalId = null;
+    state.pomodoro.endTime = null;
+    state.pomodoro.isRunning = false;
+    els.startPomodoroBtn.textContent = 'Start';
+    els.pomodoroDurationSelect.disabled = false;
+    state.pomodoroHistory.push({
+      completedAt: Date.now(),
+      minutes: state.pomodoro.minutes
+    });
+    persistState();
+    renderPomodoroHistory();
+    showToast('Pomodoro complete. Great focus session.', 'success');
+    playAlarmTone();
+  }
+}
+
+function pausePomodoro() {
+  if (!state.pomodoro.isRunning) return;
+  state.pomodoro.remainingSeconds = Math.max(
+    0,
+    Math.ceil((state.pomodoro.endTime - Date.now()) / 1000)
+  );
+  if (state.pomodoro.intervalId) clearInterval(state.pomodoro.intervalId);
+  state.pomodoro.intervalId = null;
+  state.pomodoro.endTime = null;
+  state.pomodoro.isRunning = false;
+  els.pomodoroDurationSelect.disabled = false;
+  els.startPomodoroBtn.textContent = 'Resume';
+  setPomodoroTimer();
 }
 
 function resetPomodoro() {
   if (state.pomodoro.intervalId) {
     clearInterval(state.pomodoro.intervalId);
+    state.pomodoro.intervalId = null;
   }
   state.pomodoro.isRunning = false;
+  state.pomodoro.endTime = null;
   state.pomodoro.remainingSeconds = state.pomodoro.minutes * 60;
   els.timerDisplay.textContent = formatTimer(state.pomodoro.minutes * 60);
+  els.startPomodoroBtn.textContent = 'Start';
+  els.pomodoroDurationSelect.disabled = false;
 }
 
 function wireEvents() {
@@ -1039,6 +1483,99 @@ function wireEvents() {
   });
 
   els.taskCategory.addEventListener('change', renderCustomFields);
+  els.categoryQuickSelect.addEventListener('focus', () => {
+    state.categoryMenuWasOpen = els.sidebar.classList.contains('is-open');
+  });
+  els.categoryQuickSelect.addEventListener('pointerdown', (event) => event.stopPropagation());
+  els.categoryQuickSelect.addEventListener('click', (event) => event.stopPropagation());
+  els.categoryQuickSelect.addEventListener('change', (event) => {
+    state.selectedCategory = event.target.value || 'All';
+    state.taskOriginCategory = state.selectedCategory;
+    navigateAppPage('tasks');
+    state.categoryMenuWasOpen = false;
+  });
+  els.challengeSelect.addEventListener('focus', () => {
+    state.challengeMenuWasOpen = els.sidebar.classList.contains('is-open');
+  });
+  ['pointerdown', 'click', 'touchstart'].forEach((eventName) => {
+    els.challengeSelect.addEventListener(eventName, (event) => event.stopPropagation());
+  });
+  els.deleteCategoryBtn.addEventListener('click', () => {
+    if (state.selectedCategory !== 'All') prepareCategoryDeletion(state.selectedCategory);
+  });
+  els.challengeSelect.addEventListener('change', (event) => {
+    const value = event.target.value;
+    const drawerWasOpen = els.sidebar.classList.contains('is-open');
+    if (!value) {
+      state.activeChallenge = null;
+      persistState();
+      renderChallengeProgress();
+      renderHomePage();
+      showToast('Challenge cleared', 'success');
+      if (drawerWasOpen) setMobileMenuOpen(true);
+      return;
+    }
+
+    if (value === 'custom') {
+      buildChallengeOptions();
+      els.customChallengeForm.reset();
+      els.customChallengeDays.value = '14';
+      els.customChallengeDialog.showModal();
+      els.customChallengeName.focus();
+      if (drawerWasOpen) setMobileMenuOpen(true);
+      return;
+    }
+
+    const challenge = [...state.challengeTemplates, ...state.customChallenges].find((entry) => entry.id === value);
+    if (!challenge) return;
+
+    state.activeChallenge = {
+      ...challenge,
+      startedOn: formatDateInput(new Date())
+    };
+    persistState();
+    renderChallengeProgress();
+    renderHomePage();
+    showToast(`${challenge.label} selected`, 'success');
+    if (drawerWasOpen) setMobileMenuOpen(true);
+  });
+  els.customChallengeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const label = els.customChallengeName.value.trim();
+    const durationDays = Number(els.customChallengeDays.value);
+    if (!label || !Number.isInteger(durationDays) || durationDays < 1 || durationDays > 3650) {
+      showToast('Enter a challenge name and a duration from 1 to 3650 days', 'warning');
+      return;
+    }
+
+    const challenge = {
+      id: `custom-${generateId()}`,
+      label,
+      durationDays
+    };
+    state.customChallenges.push(challenge);
+    state.activeChallenge = {
+      ...challenge,
+      startedOn: formatDateInput(new Date())
+    };
+    persistState();
+    els.customChallengeDialog.close();
+    renderAll();
+    showToast(`${label} started`, 'success');
+    if (els.sidebar.classList.contains('is-open')) setMobileMenuOpen(true);
+  });
+  els.cancelCustomChallenge.addEventListener('click', () => {
+    els.customChallengeDialog.close();
+    buildChallengeOptions();
+    if (els.sidebar.classList.contains('is-open')) setMobileMenuOpen(true);
+  });
+  els.customChallengeDialog.addEventListener('click', (event) => {
+    if (event.target === els.customChallengeDialog) {
+      els.customChallengeDialog.close();
+      buildChallengeOptions();
+      if (els.sidebar.classList.contains('is-open')) setMobileMenuOpen(true);
+    }
+  });
   els.priorityFilter.addEventListener('change', (event) => {
     state.selectedPriority = event.target.value;
     renderTaskList();
@@ -1073,6 +1610,7 @@ function wireEvents() {
     state.selectedDate = event.target.value;
     renderAll();
   });
+  els.reportRange.addEventListener('change', renderReportsPage);
   els.focusModeBtn.addEventListener('click', () => els.focusModeDialog.showModal());
   els.closeFocusModeBtn.addEventListener('click', () => els.focusModeDialog.close());
   els.focusModeDialog.addEventListener('click', (event) => {
@@ -1080,6 +1618,51 @@ function wireEvents() {
   });
 
   els.addCategoryBtn.addEventListener('click', addCategory);
+  els.pomodoroDurationSelect.addEventListener('change', (event) => {
+    const value = event.target.value;
+    if (value === 'custom') {
+      els.customPomodoroMinutes.value = String(state.pomodoro.minutes);
+      els.customPomodoroDialog.showModal();
+      els.customPomodoroMinutes.focus();
+      return;
+    }
+
+    state.pomodoro.minutes = Number(value);
+    resetPomodoro();
+    persistState();
+    renderPomodoroDuration();
+  });
+  els.customPomodoroForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const minutes = Number(els.customPomodoroMinutes.value);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
+      showToast('Choose a session duration from 1 to 180 minutes', 'warning');
+      return;
+    }
+
+    state.pomodoro.minutes = minutes;
+    resetPomodoro();
+    persistState();
+    renderPomodoroDuration();
+    els.customPomodoroDialog.close();
+  });
+  els.cancelCustomPomodoro.addEventListener('click', () => {
+    els.customPomodoroDialog.close();
+    renderPomodoroDuration();
+  });
+  els.customPomodoroDialog.addEventListener('click', (event) => {
+    if (event.target === els.customPomodoroDialog) {
+      els.customPomodoroDialog.close();
+      renderPomodoroDuration();
+    }
+  });
+  els.focusModeDialog.addEventListener('toggle', () => {
+    if (els.focusModeDialog.open) {
+      renderPomodoroDuration();
+      renderPomodoroHistory();
+      setPomodoroTimer();
+    }
+  });
   els.newTaskBtn.addEventListener('click', () => {
     state.taskOriginCategory = state.selectedCategory;
     els.taskForm.reset();
@@ -1098,6 +1681,7 @@ function wireEvents() {
   els.categoryDialogForm.addEventListener('submit', handleCategoryDialogSubmit);
   els.cancelCategoryDialog.addEventListener('click', () => els.categoryDialog.close());
   els.profileForm.addEventListener('submit', saveProfile);
+  els.profileForm.addEventListener('input', persistProfileDraft);
   els.useSuggestionBtn.addEventListener('click', useSuggestion);
 
   els.menuToggle.addEventListener('click', () => {
@@ -1105,19 +1689,25 @@ function wireEvents() {
   });
   els.menuScrim.addEventListener('click', () => setMobileMenuOpen(false));
   els.sidebar.addEventListener('click', (event) => {
-    const viewButton = event.target.closest('[data-mobile-view]');
-    if (!viewButton) return;
-    if (viewButton.dataset.mobileView === 'overview') {
-      state.selectedCategory = 'All';
-      state.taskOriginCategory = 'All';
-      renderAll();
+    if (event.target.closest('#challengeSelect, #categoryQuickSelect')) {
+      event.stopPropagation();
     }
-    if (viewButton.dataset.mobileView === 'profile') loadProfileForm();
-    setMobileView(viewButton.dataset.mobileView);
-    setMobileMenuOpen(false);
-    if (viewButton.dataset.mobileView === 'planner') {
-      els.taskTitle.focus();
+  });
+  els.sidebar.addEventListener('change', (event) => {
+    if (event.target === els.challengeSelect && state.challengeMenuWasOpen) {
+      setMobileMenuOpen(true);
+      state.challengeMenuWasOpen = false;
     }
+  });
+  document.addEventListener('click', (event) => {
+    const backButton = event.target.closest('[data-back]');
+    if (backButton) {
+      goBack();
+      return;
+    }
+    const pageButton = event.target.closest('button[data-app-page]');
+    if (!pageButton) return;
+    navigateAppPage(pageButton.dataset.appPage);
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') setMobileMenuOpen(false);
@@ -1164,7 +1754,7 @@ function init() {
   loadState();
   purgeExpiredDeletedTasks();
   state.selectedCategory = state.categories[0] || 'All';
-  setMobileView('tasks');
+  setMobileView('home');
   els.datePicker.value = state.selectedDate;
   state.selectedPriority = 'all';
   els.priorityFilter.value = 'all';
@@ -1173,24 +1763,12 @@ function init() {
   loadProfileForm();
   renderAll();
   wireEvents();
+  navigateAppPage('home', false);
   setInterval(() => {
     runReminderCheck();
     renderAll();
   }, 30000);
-  setInterval(() => {
-    if (state.pomodoro.isRunning) {
-      state.pomodoro.remainingSeconds += 1;
-      const total = state.pomodoro.minutes * 60;
-      const remaining = total - state.pomodoro.remainingSeconds;
-      if (remaining <= 0) {
-        state.pomodoro.isRunning = false;
-        state.pomodoro.remainingSeconds = total;
-        showToast('Pomodoro complete. Great focus session.', 'success');
-        playAlarmTone();
-      }
-      els.timerDisplay.textContent = formatTimer(Math.max(0, remaining));
-    }
-  }, 1000);
+  setPomodoroTimer();
   showToast('Planner ready. Stay consistent and focused.', 'success');
 }
 

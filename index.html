@@ -7,9 +7,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261021-nav2" />
+    <link rel="stylesheet" href="styles.css?v=20261026-home-reports-nav2"/>
   </head>
-  <body data-mobile-view="tasks">
+  <body data-mobile-view="home" data-app-page="home">
     <div class="app-shell">
       <aside id="categoryDrawer" class="sidebar">
         <div class="brand-wrap">
@@ -21,18 +21,42 @@
         </div>
 
         <nav class="mobile-drawer-links" aria-label="Planner views">
-          <button class="mobile-drawer-link" type="button" data-mobile-view="overview">Overview</button>
-          <button class="mobile-drawer-link" type="button" data-mobile-view="trash">Recently deleted <span id="trashCount">0</span></button>
-          <button class="mobile-drawer-link" type="button" data-mobile-view="profile">Profile & goals</button>
-        </nav>
-
-        <div class="sidebar-section">
-          <div class="section-head">
-            <span>Categories</span>
-            <button id="addCategoryBtn" class="icon-button" title="Add category" aria-label="Add category">+</button>
+          <div class="drawer-group">
+            <label class="drawer-label" for="categoryQuickSelect">Categories</label>
+            <select id="categoryQuickSelect" class="drawer-select">
+              <option value="All">All</option>
+            </select>
+            <button id="addCategoryBtn" class="drawer-action" type="button">Add category</button>
+            <button id="deleteCategoryBtn" class="drawer-action danger" type="button">Remove selected category</button>
           </div>
-          <div id="categoryList" class="category-list"></div>
-        </div>
+          <div class="drawer-group">
+            <label class="drawer-label" for="challengeSelect">Challenge</label>
+            <select id="challengeSelect" class="drawer-select">
+              <option value="">No challenge</option>
+              <option value="week-1">Challenge Week 1</option>
+              <option value="week-2">Challenge Week 2</option>
+              <option value="21-days">21 Days Challenge</option>
+              <option value="1-month">1 Month Challenge</option>
+              <option value="custom">Custom timeline...</option>
+            </select>
+          </div>
+          <div class="drawer-group">
+            <span class="drawer-label">Reports</span>
+            <button class="mobile-drawer-link" type="button" data-app-page="reports">Overview</button>
+          </div>
+          <div class="drawer-group">
+            <span class="drawer-label">Personal details</span>
+            <button class="mobile-drawer-link" type="button" data-app-page="profile">Profile & goals</button>
+          </div>
+          <div class="drawer-group">
+            <span class="drawer-label">Deleted history</span>
+            <button class="mobile-drawer-link" type="button" data-app-page="trash">Recently deleted <span id="trashCount">0</span></button>
+          </div>
+          <div class="drawer-group">
+            <span class="drawer-label">Start</span>
+            <button class="mobile-drawer-link" type="button" data-app-page="home">Home</button>
+          </div>
+        </nav>
 
         <div class="sidebar-section storage-panel">
           <button id="requestNotificationBtn" class="secondary-btn wide">Enable reminders</button>
@@ -61,8 +85,44 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 1.5M9 2h6M12 2v3M19 6l1.5-1.5"></path></svg>
           </button>
         </header>
+        <div id="homePage" class="app-page" data-app-page="home" hidden>
+          <header class="page-toolbar">
+            <button class="back-button" type="button" data-back aria-label="Go back" title="Go back">←</button>
+            <div>
+              <p class="eyebrow">Focus Planner</p>
+              <h2>Home</h2>
+            </div>
+          </header>
+          <section class="home-hero card-panel">
+            <p class="eyebrow" id="homeDateLabel"></p>
+            <h1 id="homeGreeting">Good morning</h1>
+            <p id="homeGoal"></p>
+            <div class="home-actions">
+              <button class="primary-btn" type="button" data-app-page="tasks">Open categories</button>
+              <button class="secondary-btn" type="button" data-app-page="reports">View reports</button>
+            </div>
+          </section>
+          <section class="home-summary-grid" aria-label="Today's planner summary">
+            <article class="stat-card card-purple"><span>Today's tasks</span><strong id="homeTaskCount">0</strong></article>
+            <article class="stat-card card-blue"><span>Completed</span><strong id="homeCompletedCount">0</strong></article>
+            <article class="stat-card card-green"><span>Focus sessions today</span><strong id="homeFocusCount">0</strong></article>
+          </section>
+          <section id="homeChallengeCard" class="challenge-progress-panel card-panel" hidden>
+            <div class="challenge-progress-header">
+              <div><p class="eyebrow">Your challenge</p><h2 id="homeChallengeTitle"></h2></div>
+              <span id="homeChallengeStatus" class="challenge-progress-status"></span>
+            </div>
+            <div class="challenge-progress-track" role="progressbar" aria-label="Challenge timeline progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span id="homeChallengeBar"></span>
+            </div>
+            <div class="challenge-progress-meta"><span id="homeChallengeDay"></span><span id="homeChallengeDates"></span></div>
+          </section>
+        </div>
+
+        <div id="tasksPage" class="app-page" data-app-page="tasks" hidden>
         <header class="topbar">
           <div class="top-actions">
+            <button class="back-button" type="button" data-back aria-label="Go back" title="Go back">←</button>
             <button id="newTaskBtn" class="primary-btn">+ New task</button>
             <div class="calendar-action">
               <button id="calendarPickerBtn" class="calendar-icon-button" type="button" title="Choose date" aria-label="Choose date">
@@ -99,6 +159,23 @@
           </div>
           <p id="smartSuggestion"></p>
           <button id="useSuggestionBtn" class="secondary-btn" type="button" hidden>Use suggestion</button>
+        </section>
+
+        <section id="challengeProgressPanel" class="challenge-progress-panel card-panel" aria-live="polite" hidden>
+          <div class="challenge-progress-header">
+            <div>
+              <p class="eyebrow">Your challenge</p>
+              <h2 id="challengeProgressTitle"></h2>
+            </div>
+            <span id="challengeProgressStatus" class="challenge-progress-status"></span>
+          </div>
+          <div class="challenge-progress-track" role="progressbar" aria-label="Challenge timeline progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <span id="challengeProgressBar"></span>
+          </div>
+          <div class="challenge-progress-meta">
+            <span id="challengeProgressDay"></span>
+            <span id="challengeProgressDates"></span>
+          </div>
         </section>
 
         <section class="content-grid">
@@ -211,9 +288,34 @@
 
           </aside>
         </section>
+        </div>
 
-        <section id="trashPanel" class="card-panel page-panel" aria-label="Recently deleted tasks">
-          <div class="panel-header">
+        <section id="reportsPage" class="app-page report-page" data-app-page="reports" hidden>
+          <header class="page-toolbar">
+            <button class="back-button" type="button" data-back aria-label="Go back" title="Go back">←</button>
+            <div><p class="eyebrow">Analytics</p><h2>Reports</h2></div>
+            <label class="report-range-control"><span>Time range</span><select id="reportRange"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="all">All time</option></select></label>
+          </header>
+          <section class="report-summary-grid" aria-label="Task analytics summary">
+            <article class="stat-card card-purple"><span>Tasks in range</span><strong id="reportTaskCount">0</strong></article>
+            <article class="stat-card card-blue"><span>Completed</span><strong id="reportCompletedCount">0</strong></article>
+            <article class="stat-card card-green"><span>Completion rate</span><strong id="reportCompletionRate">0%</strong></article>
+          </section>
+          <section class="report-chart-grid">
+            <article class="card-panel report-chart-card">
+              <div class="panel-header"><div><p class="eyebrow">Category breakdown</p><h3>Tasks by category</h3></div></div>
+              <div id="categoryReportChart" class="bar-chart" role="img" aria-label="Tasks by category"></div>
+            </article>
+            <article class="card-panel report-chart-card">
+              <div class="panel-header"><div><p class="eyebrow">Daily activity</p><h3>Tasks completed</h3></div></div>
+              <div id="activityReportChart" class="activity-chart" role="img" aria-label="Daily completed tasks"></div>
+            </article>
+          </section>
+        </section>
+
+        <section id="trashPanel" class="app-page card-panel page-panel" data-app-page="trash" aria-label="Recently deleted tasks" hidden>
+          <div class="panel-header page-toolbar">
+            <button class="back-button" type="button" data-back aria-label="Go back" title="Go back">←</button>
             <div>
               <p class="eyebrow">Archive</p>
               <h2>Recently deleted</h2>
@@ -222,8 +324,9 @@
           <div id="trashList" class="task-list"></div>
         </section>
 
-        <section id="profilePanel" class="card-panel page-panel" aria-label="Profile and goals">
-          <div class="panel-header">
+        <section id="profilePanel" class="app-page card-panel page-panel" data-app-page="profile" aria-label="Profile and goals" hidden>
+          <div class="panel-header page-toolbar">
+            <button class="back-button" type="button" data-back aria-label="Go back" title="Go back">←</button>
             <div>
               <p class="eyebrow">Personal settings</p>
               <h2>Profile & goals</h2>
@@ -268,15 +371,66 @@
           </div>
           <button id="closeFocusModeBtn" class="icon-button close-form-button" type="button" aria-label="Close Focus Mode">×</button>
         </div>
+        <label class="pomodoro-duration-control">
+          <span>Session length</span>
+          <select id="pomodoroDurationSelect">
+            <option value="15">15 minutes</option>
+            <option value="25" selected>25 minutes</option>
+            <option value="50">50 minutes</option>
+            <option value="custom">Custom duration...</option>
+          </select>
+        </label>
         <div class="timer-circle"><span id="timerDisplay">25:00</span></div>
         <div class="timer-actions">
           <button id="startPomodoroBtn" class="primary-btn">Start</button>
           <button id="resetPomodoroBtn" class="secondary-btn">Reset</button>
         </div>
+        <section class="pomodoro-history" aria-live="polite">
+          <h3>Focus history</h3>
+          <div class="pomodoro-history-stats">
+            <div><strong id="pomodoroTodayCount">0</strong><span>Today</span></div>
+            <div><strong id="pomodoroWeekCount">0</strong><span>This week</span></div>
+            <div><strong id="pomodoroMonthCount">0</strong><span>This month</span></div>
+          </div>
+          <p id="pomodoroHistorySummary" class="pomodoro-history-summary"></p>
+          <ol id="pomodoroHistoryList" class="pomodoro-history-list"></ol>
+        </section>
       </div>
+    </dialog>
+    <dialog id="customPomodoroDialog" class="app-dialog">
+      <form id="customPomodoroForm" class="dialog-form">
+        <h2>Custom focus session</h2>
+        <p>Choose how long you want to focus.</p>
+        <label>
+          <span>Duration (minutes)</span>
+          <input id="customPomodoroMinutes" type="number" min="1" max="180" value="30" required />
+        </label>
+        <div class="dialog-actions">
+          <button id="cancelCustomPomodoro" class="secondary-btn" type="button">Cancel</button>
+          <button class="primary-btn" type="submit">Set duration</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="customChallengeDialog" class="app-dialog">
+      <form id="customChallengeForm" class="dialog-form">
+        <h2>Create a custom challenge</h2>
+        <p>Choose a name and timeline. Your progress will be saved on this device.</p>
+        <label>
+          <span>Challenge name</span>
+          <input id="customChallengeName" type="text" maxlength="60" required placeholder="e.g. Reading habit" />
+        </label>
+        <label>
+          <span>Duration (days)</span>
+          <input id="customChallengeDays" type="number" min="1" max="3650" value="14" required />
+        </label>
+        <div class="dialog-actions">
+          <button id="cancelCustomChallenge" class="secondary-btn" type="button">Cancel</button>
+          <button class="primary-btn" type="submit">Start challenge</button>
+        </div>
+      </form>
     </dialog>
     <audio id="alarmSound" preload="auto"></audio>
 
-    <script src="script.js?v=20261021-nav2"></script>
+    <script src="script.js?v=20261026-home-reports-nav2"></script>
   </body>
 </html>
