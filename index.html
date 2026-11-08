@@ -7,11 +7,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261026-home-reports-nav2"/>
+    <link rel="stylesheet" href="styles.css?v=20261109-streak4"/>
   </head>
   <body data-mobile-view="home" data-app-page="home">
     <div class="app-shell">
       <aside id="categoryDrawer" class="sidebar">
+        <button id="drawerCloseBtn" class="drawer-close-btn" type="button" aria-label="Close menu" title="Close menu">×</button>
         <div class="brand-wrap">
           <div class="brand-mark">F</div>
           <div>
@@ -22,23 +23,17 @@
 
         <nav class="mobile-drawer-links" aria-label="Planner views">
           <div class="drawer-group">
+            <span class="drawer-label">Home</span>
+            <button class="mobile-drawer-link" type="button" data-app-page="home">Home</button>
+            <button class="mobile-drawer-link" type="button" data-app-page="fitness">Fitness system</button>
+          </div>
+          <div class="drawer-group">
             <label class="drawer-label" for="categoryQuickSelect">Categories</label>
             <select id="categoryQuickSelect" class="drawer-select">
               <option value="All">All</option>
             </select>
             <button id="addCategoryBtn" class="drawer-action" type="button">Add category</button>
             <button id="deleteCategoryBtn" class="drawer-action danger" type="button">Remove selected category</button>
-          </div>
-          <div class="drawer-group">
-            <label class="drawer-label" for="challengeSelect">Challenge</label>
-            <select id="challengeSelect" class="drawer-select">
-              <option value="">No challenge</option>
-              <option value="week-1">Challenge Week 1</option>
-              <option value="week-2">Challenge Week 2</option>
-              <option value="21-days">21 Days Challenge</option>
-              <option value="1-month">1 Month Challenge</option>
-              <option value="custom">Custom timeline...</option>
-            </select>
           </div>
           <div class="drawer-group">
             <span class="drawer-label">Reports</span>
@@ -53,8 +48,8 @@
             <button class="mobile-drawer-link" type="button" data-app-page="trash">Recently deleted <span id="trashCount">0</span></button>
           </div>
           <div class="drawer-group">
-            <span class="drawer-label">Start</span>
-            <button class="mobile-drawer-link" type="button" data-app-page="home">Home</button>
+            <span class="drawer-label">Help us improve</span>
+            <button class="mobile-drawer-link" type="button" data-app-page="feedback">Send feedback</button>
           </div>
         </nav>
 
@@ -84,10 +79,13 @@
           <button id="focusModeBtn" class="navbar-icon-button" type="button" title="Open Focus Mode" aria-label="Open Focus Mode" aria-haspopup="dialog">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 1.5M9 2h6M12 2v3M19 6l1.5-1.5"></path></svg>
           </button>
+          <button id="streakModeBtn" class="navbar-icon-button streak-icon-button" type="button" title="Challenge streak" aria-label="Open challenge streak">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22c4.2 0 7-2.8 7-6.7 0-2.6-1.4-4.8-3.8-6.5.2 2-1 3.2-2.3 3.8.4-4.2-1.3-7.5-5.2-10.1.4 4.1-.6 6.3-2.1 8.3A7.2 7.2 0 0 0 5 15.4C5 19.3 7.8 22 12 22Z"></path><path d="M12 19c1.7 0 2.8-1 2.8-2.5 0-1-.5-1.8-1.5-2.5-.1 1-.7 1.5-1.4 1.7.1-1.6-.6-2.7-1.8-3.6.1 1.6-.8 2.3-1 3.6C8.8 17.4 9.9 19 12 19Z"></path></svg>
+          </button>
         </header>
         <div id="homePage" class="app-page" data-app-page="home" hidden>
           <header class="page-toolbar">
-            <button class="back-button" type="button" data-back aria-label="Go back" title="Go back">←</button>
+            <button class="back-button home-back-button" type="button" data-back aria-label="Go back" title="Go back">←</button>
             <div>
               <p class="eyebrow">Focus Planner</p>
               <h2>Home</h2>
@@ -100,6 +98,7 @@
             <div class="home-actions">
               <button class="primary-btn" type="button" data-app-page="tasks">Open categories</button>
               <button class="secondary-btn" type="button" data-app-page="reports">View reports</button>
+              <button class="secondary-btn" type="button" data-open-challenges>Challenge streak</button>
             </div>
           </section>
           <section class="home-summary-grid" aria-label="Today's planner summary">
@@ -112,12 +111,28 @@
               <div><p class="eyebrow">Your challenge</p><h2 id="homeChallengeTitle"></h2></div>
               <span id="homeChallengeStatus" class="challenge-progress-status"></span>
             </div>
-            <div class="challenge-progress-track" role="progressbar" aria-label="Challenge timeline progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="challenge-progress-track" role="progressbar" aria-label="Challenge streak progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
               <span id="homeChallengeBar"></span>
             </div>
             <div class="challenge-progress-meta"><span id="homeChallengeDay"></span><span id="homeChallengeDates"></span></div>
           </section>
+          <section class="card-panel fitness-shortcut">
+            <div><p class="eyebrow">Bodybuilding</p><h2>Your fitness, in one place</h2><p>Track nutrition, training, recovery and progress alongside your planner.</p></div>
+            <button class="primary-btn" type="button" data-app-page="fitness">Open fitness system</button>
+          </section>
         </div>
+
+        <section id="fitnessPage" class="app-page fitness-page" data-app-page="fitness" hidden>
+          <header class="page-toolbar">
+            <button class="back-button" type="button" data-back aria-label="Go back" title="Go back">←</button>
+            <div><p class="eyebrow">Personal bodybuilding</p><h2>Fitness system</h2></div>
+            <button id="fitnessExportBtn" class="secondary-btn fitness-export" type="button">Export fitness report</button>
+          </header>
+          <div class="fitness-layout">
+            <nav id="fitnessNav" class="fitness-nav card-panel" aria-label="Fitness categories"></nav>
+            <div id="fitnessScreen" class="fitness-screen" aria-live="polite"></div>
+          </div>
+        </section>
 
         <div id="tasksPage" class="app-page" data-app-page="tasks" hidden>
         <header class="topbar">
@@ -159,23 +174,6 @@
           </div>
           <p id="smartSuggestion"></p>
           <button id="useSuggestionBtn" class="secondary-btn" type="button" hidden>Use suggestion</button>
-        </section>
-
-        <section id="challengeProgressPanel" class="challenge-progress-panel card-panel" aria-live="polite" hidden>
-          <div class="challenge-progress-header">
-            <div>
-              <p class="eyebrow">Your challenge</p>
-              <h2 id="challengeProgressTitle"></h2>
-            </div>
-            <span id="challengeProgressStatus" class="challenge-progress-status"></span>
-          </div>
-          <div class="challenge-progress-track" role="progressbar" aria-label="Challenge timeline progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <span id="challengeProgressBar"></span>
-          </div>
-          <div class="challenge-progress-meta">
-            <span id="challengeProgressDay"></span>
-            <span id="challengeProgressDates"></span>
-          </div>
         </section>
 
         <section class="content-grid">
@@ -347,6 +345,21 @@
             <button type="submit" class="primary-btn">Save profile</button>
           </form>
         </section>
+
+        <section id="feedbackPage" class="app-page card-panel page-panel" data-app-page="feedback" aria-label="Feedback" hidden>
+          <div class="panel-header page-toolbar">
+            <button class="back-button" type="button" data-back aria-label="Go back" title="Go back">←</button>
+            <div><p class="eyebrow">Help us improve</p><h2>Send feedback</h2></div>
+          </div>
+          <p class="muted-copy">Tell us what is working well or what could be better. Your feedback will be prepared in an email to <strong>rabbanisk162002@gmail.com</strong>.</p>
+          <form id="feedbackForm" class="task-form feedback-form">
+            <label><span>Your name (optional)</span><input id="feedbackName" type="text" maxlength="80" placeholder="Name" /></label>
+            <label><span>How would you rate the app?</span><select id="feedbackRating" required><option value="5">5 · Excellent</option><option value="4">4 · Good</option><option value="3">3 · Okay</option><option value="2">2 · Needs work</option><option value="1">1 · Poor</option></select></label>
+            <label><span>Your feedback</span><textarea id="feedbackMessage" rows="6" maxlength="3000" required placeholder="What do you like? What would you change?"></textarea></label>
+            <button class="primary-btn" type="submit">Continue to email</button>
+            <p class="muted-copy">Your device must have an email app configured. Review and send the message there; this app cannot send email directly.</p>
+          </form>
+        </section>
       </main>
     </div>
 
@@ -380,6 +393,14 @@
             <option value="custom">Custom duration...</option>
           </select>
         </label>
+        <label class="pomodoro-duration-control">
+          <span>When time is up</span>
+          <select id="pomodoroAlertMode" aria-label="Pomodoro completion alert">
+            <option value="alarm">Alarm</option>
+            <option value="vibration">Vibration</option>
+            <option value="both" selected>Both</option>
+          </select>
+        </label>
         <div class="timer-circle"><span id="timerDisplay">25:00</span></div>
         <div class="timer-actions">
           <button id="startPomodoroBtn" class="primary-btn">Start</button>
@@ -411,26 +432,43 @@
         </div>
       </form>
     </dialog>
-    <dialog id="customChallengeDialog" class="app-dialog">
-      <form id="customChallengeForm" class="dialog-form">
-        <h2>Create a custom challenge</h2>
-        <p>Choose a name and timeline. Your progress will be saved on this device.</p>
-        <label>
-          <span>Challenge name</span>
-          <input id="customChallengeName" type="text" maxlength="60" required placeholder="e.g. Reading habit" />
-        </label>
-        <label>
-          <span>Duration (days)</span>
-          <input id="customChallengeDays" type="number" min="1" max="3650" value="14" required />
-        </label>
-        <div class="dialog-actions">
-          <button id="cancelCustomChallenge" class="secondary-btn" type="button">Cancel</button>
-          <button class="primary-btn" type="submit">Start challenge</button>
+    <dialog id="challengeDialog" class="app-dialog challenge-dialog" aria-labelledby="challengeDialogTitle">
+      <div class="challenge-dialog-content">
+        <div class="panel-header compact">
+          <div><p class="eyebrow">Daily consistency</p><h2 id="challengeDialogTitle">Challenge streak</h2></div>
+          <button id="closeChallengeDialogBtn" class="icon-button close-form-button" type="button" aria-label="Close challenge streak">×</button>
         </div>
-      </form>
+        <section id="activeChallengeSummary" class="active-challenge-summary"></section>
+        <section class="challenge-history-section">
+          <h3>Challenge history</h3>
+          <div id="challengeHistoryList"></div>
+        </section>
+        <form id="challengeForm" class="dialog-form">
+          <h3>Start a new challenge</h3>
+          <p>Choose what you will do each day, where you will log it, and why you want to commit. A challenge starts only when you confirm here.</p>
+          <label><span>Challenge name</span><input id="challengeName" type="text" maxlength="60" required placeholder="e.g. Log my workouts every day" /></label>
+          <div class="two-col">
+            <label><span>Duration</span><select id="challengeDays" required><option value="7">1 week · 7 consecutive days</option><option value="14">2 weeks · 14 consecutive days</option><option value="21">21 consecutive days</option><option value="30">1 month · 30 consecutive days</option><option value="custom">Custom duration...</option></select></label>
+            <label id="customChallengeDaysWrap" hidden><span>Custom days</span><input id="customChallengeDays" type="number" min="1" max="3650" value="14" /></label>
+          </div>
+          <label><span>Track progress in</span><select id="challengeCategory" required></select></label>
+          <label><span>Why are you taking this challenge?</span><textarea id="challengeReason" rows="2" maxlength="240" required placeholder="What are you hoping to build or achieve?"></textarea></label>
+          <div class="dialog-actions">
+            <button id="cancelChallengeBtn" class="secondary-btn" type="button">Not now</button>
+            <button class="primary-btn" type="submit">Start my streak</button>
+          </div>
+        </form>
+      </div>
     </dialog>
-    <audio id="alarmSound" preload="auto"></audio>
-
-    <script src="script.js?v=20261026-home-reports-nav2"></script>
+    <dialog id="pomodoroCompletionDialog" class="app-dialog pomodoro-completion-dialog" aria-labelledby="pomodoroCompletionTitle">
+      <div class="dialog-form">
+        <p class="eyebrow">Focus session complete</p>
+        <h2 id="pomodoroCompletionTitle">Time is up!</h2>
+        <p>Your focus alert will continue until you finish.</p>
+        <button id="finishPomodoroAlertBtn" class="primary-btn full-width" type="button">Finish · Stop alert</button>
+      </div>
+    </dialog>
+    <script src="script.js?v=20261109-streak4"></script>
+    <script src="fitness.js?v=20261109-streak4"></script>
   </body>
 </html>

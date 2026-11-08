@@ -1,6 +1,8 @@
 const STORAGE_KEY = 'focusflow-planner-v1';
 const DEFAULT_CATEGORIES = ['Gym', 'Study', 'Work', 'Health', 'Personal'];
 let alarmAudioContext = null;
+let alarmAudioWarningShown = false;
+const activeAlarmOscillators = new Set();
 const CUSTOM_FIELDS = {
   Gym: [
     { key: 'equipment', label: 'Equipment', type: 'text' },
@@ -42,6 +44,8 @@ const state = {
   taskOriginCategory: 'Gym',
   tasks: [],
   deletedTasks: [],
+  deletedCategories: [],
+  taskCompletionHistory: [],
   profile: { name: '', goal: '', instagram: '', linkedIn: '', x: '', email: '' },
   categoryDialogMode: 'add',
   pendingCategoryDelete: '',
@@ -54,13 +58,16 @@ const state = {
   ],
   customChallenges: [],
   activeChallenge: null,
+  challengeHistory: [],
   pomodoroHistory: [],
   pomodoro: {
     isRunning: false,
     minutes: 25,
     remainingSeconds: 25 * 60,
     endTime: null,
-    intervalId: null
+    intervalId: null,
+    alertMode: 'both',
+    alertIntervalId: null
   }
 };
 
@@ -87,24 +94,25 @@ const els = {
   reportCompletionRate: document.getElementById('reportCompletionRate'),
   categoryReportChart: document.getElementById('categoryReportChart'),
   activityReportChart: document.getElementById('activityReportChart'),
-  challengeSelect: document.getElementById('challengeSelect'),
-  challengeProgressPanel: document.getElementById('challengeProgressPanel'),
-  challengeProgressTitle: document.getElementById('challengeProgressTitle'),
-  challengeProgressStatus: document.getElementById('challengeProgressStatus'),
-  challengeProgressTrack: document.querySelector('.challenge-progress-track'),
-  challengeProgressBar: document.getElementById('challengeProgressBar'),
-  challengeProgressDay: document.getElementById('challengeProgressDay'),
-  challengeProgressDates: document.getElementById('challengeProgressDates'),
-  customChallengeDialog: document.getElementById('customChallengeDialog'),
-  customChallengeForm: document.getElementById('customChallengeForm'),
-  customChallengeName: document.getElementById('customChallengeName'),
+  challengeDialog: document.getElementById('challengeDialog'),
+  challengeForm: document.getElementById('challengeForm'),
+  challengeName: document.getElementById('challengeName'),
+  challengeDays: document.getElementById('challengeDays'),
   customChallengeDays: document.getElementById('customChallengeDays'),
-  cancelCustomChallenge: document.getElementById('cancelCustomChallenge'),
+  customChallengeDaysWrap: document.getElementById('customChallengeDaysWrap'),
+  challengeCategory: document.getElementById('challengeCategory'),
+  challengeReason: document.getElementById('challengeReason'),
+  activeChallengeSummary: document.getElementById('activeChallengeSummary'),
+  challengeHistoryList: document.getElementById('challengeHistoryList'),
+  streakModeBtn: document.getElementById('streakModeBtn'),
+  closeChallengeDialogBtn: document.getElementById('closeChallengeDialogBtn'),
+  cancelChallengeBtn: document.getElementById('cancelChallengeBtn'),
   customPomodoroDialog: document.getElementById('customPomodoroDialog'),
   customPomodoroForm: document.getElementById('customPomodoroForm'),
   customPomodoroMinutes: document.getElementById('customPomodoroMinutes'),
   cancelCustomPomodoro: document.getElementById('cancelCustomPomodoro'),
   pomodoroDurationSelect: document.getElementById('pomodoroDurationSelect'),
+  pomodoroAlertMode: document.getElementById('pomodoroAlertMode'),
   pomodoroTodayCount: document.getElementById('pomodoroTodayCount'),
   pomodoroWeekCount: document.getElementById('pomodoroWeekCount'),
   pomodoroMonthCount: document.getElementById('pomodoroMonthCount'),
@@ -149,12 +157,18 @@ const els = {
   importFile: document.getElementById('importFile'),
   requestNotificationBtn: document.getElementById('requestNotificationBtn'),
   toastContainer: document.getElementById('toastContainer'),
-  alarmSound: document.getElementById('alarmSound'),
   sidebar: document.getElementById('categoryDrawer'),
+  drawerCloseBtn: document.getElementById('drawerCloseBtn'),
   menuToggle: document.getElementById('menuToggle'),
   menuScrim: document.getElementById('menuScrim'),
   trashCount: document.getElementById('trashCount'),
   trashList: document.getElementById('trashList'),
+  feedbackForm: document.getElementById('feedbackForm'),
+  feedbackName: document.getElementById('feedbackName'),
+  feedbackRating: document.getElementById('feedbackRating'),
+  feedbackMessage: document.getElementById('feedbackMessage'),
+  pomodoroCompletionDialog: document.getElementById('pomodoroCompletionDialog'),
+  finishPomodoroAlertBtn: document.getElementById('finishPomodoroAlertBtn'),
   trashPanel: document.getElementById('trashPanel'),
   profilePanel: document.getElementById('profilePanel'),
   profileForm: document.getElementById('profileForm'),
@@ -259,6 +273,9 @@ function loadState() {
       }
     ];
     state.deletedTasks = [];
+    state.deletedCategories = [];
+    state.taskCompletionHistory = [];
+    state.challengeHistory = [];
     persistState();
     return;
   }
@@ -268,13 +285,28 @@ function loadState() {
     state.categories = Array.isArray(saved.categories) && saved.categories.length ? saved.categories : [...DEFAULT_CATEGORIES];
     state.tasks = Array.isArray(saved.tasks) ? saved.tasks : [];
     state.deletedTasks = Array.isArray(saved.deletedTasks) ? saved.deletedTasks : [];
+    state.deletedCategories = Array.isArray(saved.deletedCategories) ? saved.deletedCategories : [];
+    state.taskCompletionHistory = Array.isArray(saved.taskCompletionHistory) ? saved.taskCompletionHistory : [];
     state.profile = { ...state.profile, ...(saved.profile || {}) };
     state.customChallenges = Array.isArray(saved.customChallenges) ? saved.customChallenges : [];
+    state.challengeHistory = Array.isArray(saved.challengeHistory) ? saved.challengeHistory : [];
     state.activeChallenge = saved.activeChallenge || null;
+    if (state.activeChallenge && !state.activeChallenge.categorySource) {
+      state.challengeHistory.unshift({
+        ...state.activeChallenge,
+        status: 'Archived legacy challenge',
+        endedOn: formatDateInput(new Date()),
+        completionDates: Array.isArray(state.activeChallenge.completionDates) ? state.activeChallenge.completionDates : []
+      });
+      state.activeChallenge = null;
+    }
     state.pomodoroHistory = normalizePomodoroHistory(saved.pomodoroHistory);
     state.pomodoro.minutes = Number.isInteger(saved.pomodoroMinutes)
       ? Math.min(180, Math.max(1, saved.pomodoroMinutes))
       : 25;
+    state.pomodoro.alertMode = ['alarm', 'vibration', 'both'].includes(saved.pomodoroAlertMode)
+      ? saved.pomodoroAlertMode
+      : 'both';
     state.pomodoro.remainingSeconds = state.pomodoro.minutes * 60;
   } catch (error) {
     console.error('Failed to parse saved state', error);
@@ -287,11 +319,15 @@ function persistState() {
     categories: state.categories,
     tasks: state.tasks,
     deletedTasks: state.deletedTasks,
+    deletedCategories: state.deletedCategories,
+    taskCompletionHistory: state.taskCompletionHistory,
     profile: state.profile,
     customChallenges: state.customChallenges,
     activeChallenge: state.activeChallenge,
+    challengeHistory: state.challengeHistory,
     pomodoroHistory: state.pomodoroHistory,
-    pomodoroMinutes: state.pomodoro.minutes
+    pomodoroMinutes: state.pomodoro.minutes,
+    pomodoroAlertMode: state.pomodoro.alertMode
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
 }
@@ -365,28 +401,32 @@ function getVisibleTasks() {
 }
 
 function buildChallengeOptions() {
-  const challengeOptions = [
-    { id: '', label: 'No challenge' },
-    ...state.challengeTemplates,
-    ...state.customChallenges,
-    { id: 'custom', label: 'Custom timeline...' }
-  ];
-
-  if (!els.challengeSelect) return;
-
-  const selectedValue = state.activeChallenge ? state.activeChallenge.id : '';
-  els.challengeSelect.innerHTML = challengeOptions
-    .map((challenge) => `<option value="${challenge.id}">${escapeHtml(challenge.label)}</option>`)
+  const options = state.categories.map((name) => ({
+    value: `planner:${encodeURIComponent(name)}`,
+    label: `Planner · ${name}`
+  }));
+  const fitnessData = readFitnessData();
+  const fitnessLabels = {
+    nutrition: 'Diet & nutrition', workouts: 'Workout & exercise', measurements: 'Body measurements',
+    weight: 'Weight progress', water: 'Water intake', sleep: 'Sleep & recovery',
+    supplements: 'Supplements', habits: 'Daily habits', photos: 'Progress photos', goals: 'Goals & milestones',
+    learning: 'Fitness learning'
+  };
+  (Array.isArray(fitnessData.categories) ? fitnessData.categories : [])
+    .filter((category) => category.enabled !== false && fitnessLabels[category.key])
+    .forEach((category) => options.push({
+      value: `fitness:${encodeURIComponent(category.key)}`,
+      label: `Fitness · ${category.label || fitnessLabels[category.key]}`
+    }));
+  (Array.isArray(fitnessData.categories) ? fitnessData.categories : [])
+    .filter((category) => category.enabled !== false && !fitnessLabels[category.key] && category.key !== 'dashboard' && category.key !== 'profile' && category.key !== 'analytics' && category.key !== 'customize' && category.key !== 'goals')
+    .forEach((category) => options.push({
+      value: `fitness-custom:${encodeURIComponent(category.key)}`,
+      label: `Fitness · ${category.label || 'Custom category'}`
+    }));
+  els.challengeCategory.innerHTML = options
+    .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
     .join('');
-
-  const customChoice = state.customChallenges.find((challenge) => challenge.id === selectedValue);
-  if (state.activeChallenge && customChoice) {
-    els.challengeSelect.value = customChoice.id;
-  } else if (state.activeChallenge) {
-    els.challengeSelect.value = state.activeChallenge.id;
-  } else {
-    els.challengeSelect.value = '';
-  }
 }
 
 function renderPomodoroDuration() {
@@ -441,53 +481,144 @@ function renderPomodoroHistory() {
 }
 
 function renderChallengeProgress() {
-  const challenge = state.activeChallenge;
-  if (!challenge) {
-    els.challengeProgressPanel.hidden = true;
-    els.homeChallengeCard.hidden = true;
-    return;
+  const challenge = refreshActiveChallenge();
+  els.homeChallengeCard.hidden = !challenge;
+  if (challenge) {
+    const streak = getChallengeStreak(challenge.completionDates || [], challenge.startedOn);
+    els.homeChallengeTitle.textContent = challenge.label;
+    els.homeChallengeStatus.textContent = `${streak.current} day${streak.current === 1 ? '' : 's'} streak`;
+    els.homeChallengeTrack.setAttribute('aria-valuenow', String(Math.min(100, Math.round(streak.current / challenge.durationDays * 100))));
+    els.homeChallengeBar.style.width = `${Math.min(100, streak.current / challenge.durationDays * 100)}%`;
+    els.homeChallengeDay.textContent = `${streak.current} consecutive of ${challenge.durationDays} days`;
+    els.homeChallengeDates.textContent = `${challenge.categoryLabel} · Started ${formatDateLabel(challenge.startedOn)}`;
   }
-
-  const progress = getChallengeProgress(challenge);
-  els.challengeProgressPanel.hidden = false;
-  els.challengeProgressTitle.textContent = challenge.label;
-  els.challengeProgressStatus.textContent = progress.isComplete ? 'Complete' : `${progress.percent}% complete`;
-  els.challengeProgressTrack.setAttribute('aria-valuenow', String(progress.percent));
-  els.challengeProgressBar.style.width = `${progress.percent}%`;
-  els.challengeProgressDay.textContent = progress.isComplete
-    ? `${progress.durationDays} of ${progress.durationDays} days`
-    : `Day ${progress.challengeDay} of ${progress.durationDays}`;
-  els.challengeProgressDates.textContent = `Started ${formatDateLabel(progress.startDate)} · Ends ${formatDateLabel(progress.endDate)}`;
-
-  els.homeChallengeCard.hidden = false;
-  els.homeChallengeTitle.textContent = challenge.label;
-  els.homeChallengeStatus.textContent = progress.isComplete ? 'Complete' : `${progress.percent}% complete`;
-  els.homeChallengeTrack.setAttribute('aria-valuenow', String(progress.percent));
-  els.homeChallengeBar.style.width = `${progress.percent}%`;
-  els.homeChallengeDay.textContent = progress.isComplete
-    ? `${progress.durationDays} of ${progress.durationDays} days`
-    : `Day ${progress.challengeDay} of ${progress.durationDays}`;
-  els.homeChallengeDates.textContent = `Started ${formatDateLabel(progress.startDate)} · Ends ${formatDateLabel(progress.endDate)}`;
+  renderChallengeDialogContent();
 }
 
-function getChallengeProgress(challenge) {
-  const durationDays = Math.max(1, Number(challenge.durationDays) || 1);
-  const startDate = challenge.startedOn || formatDateInput(new Date());
+function readFitnessData() {
+  try {
+    return JSON.parse(localStorage.getItem('focusflow-fitness-v1') || '{}');
+  } catch (error) {
+    console.error('Could not read fitness records for challenge tracking', error);
+    return {};
+  }
+}
+
+function getChallengeActivityDates(challenge) {
+  const [source, encodedKey] = String(challenge.categorySource || '').split(':');
+  const key = decodeURIComponent(encodedKey || '');
+  const dates = new Set();
+  if (source === 'planner') {
+    state.taskCompletionHistory
+      .filter((entry) => entry.category === key && entry.date >= challenge.startedOn)
+      .forEach((entry) => dates.add(entry.date));
+    state.tasks
+      .filter((task) => task.category === key && task.completed && task.date >= challenge.startedOn)
+      .forEach((task) => dates.add(task.date));
+  } else {
+    const fitness = readFitnessData();
+    const addEntries = (items) => (Array.isArray(items) ? items : [])
+      .filter((entry) => typeof entry.date === 'string' && entry.date >= challenge.startedOn)
+      .forEach((entry) => dates.add(entry.date));
+    if (source === 'fitness-custom') {
+      addEntries((fitness.customLogs || []).filter((entry) => entry.category === key));
+    } else {
+      const collections = {
+        nutrition: fitness.meals, workouts: fitness.workouts, measurements: fitness.measurements,
+        weight: (fitness.measurements || []).filter((entry) => entry.weight !== '' && entry.weight != null),
+        water: fitness.waterEntries, sleep: fitness.sleepEntries, supplements: fitness.supplementLogs,
+        photos: fitness.photos,
+        goals: (fitness.goals || []).filter((entry) => entry.completedAt).map((entry) => ({ ...entry, date: entry.completedAt }))
+      };
+      if (key === 'habits') {
+        (fitness.habits || []).forEach((habit) => (habit.doneDates || []).filter((date) => date >= challenge.startedOn).forEach((date) => dates.add(date)));
+      } else if (key === 'learning') {
+        Object.values(fitness.lessonProgress || {}).filter((lesson) => lesson.completed && lesson.completedAt >= challenge.startedOn)
+          .forEach((lesson) => dates.add(lesson.completedAt));
+      } else {
+        addEntries(collections[key]);
+      }
+    }
+  }
+  return [...dates].sort();
+}
+
+function getChallengeStreak(completionDates, startDate) {
+  const completed = new Set(completionDates);
   const today = formatDateInput(new Date());
-  const elapsedDays = Math.max(
-    0,
-    Math.floor((parseDateInput(today) - parseDateInput(startDate)) / 86400000)
-  );
-  const challengeDay = Math.min(durationDays, elapsedDays + 1);
-  const isComplete = elapsedDays >= durationDays;
-  return {
-    durationDays,
-    startDate,
-    endDate: formatDateInput(new Date(parseDateInput(startDate).getTime() + (durationDays - 1) * 86400000)),
-    challengeDay,
-    isComplete,
-    percent: isComplete ? 100 : Math.round((elapsedDays / durationDays) * 100)
+  const yesterday = formatDateInput(new Date(parseDateInput(today).getTime() - 86400000));
+  let date = completed.has(today) ? today : yesterday;
+  let current = 0;
+  while (date >= startDate && completed.has(date)) {
+    current += 1;
+    date = formatDateInput(new Date(parseDateInput(date).getTime() - 86400000));
+  }
+  const daySerial = (dateValue) => {
+    const [year, month, day] = dateValue.split('-').map(Number);
+    return Date.UTC(year, month - 1, day);
   };
+  let longest = 0;
+  let run = 0;
+  let previousDate = '';
+  [...completed].sort().forEach((item) => {
+    run = previousDate && daySerial(item) - daySerial(previousDate) === 86400000 ? run + 1 : 1;
+    longest = Math.max(longest, run);
+    previousDate = item;
+  });
+  return { current, longest };
+}
+
+function refreshActiveChallenge() {
+  const challenge = state.activeChallenge;
+  if (!challenge) return null;
+  const previousDates = challenge.completionDates || [];
+  const dates = new Set([...previousDates, ...getChallengeActivityDates(challenge)]);
+  challenge.completionDates = [...dates].filter((date) => date >= challenge.startedOn).sort();
+  if (challenge.completionDates.length !== previousDates.length ||
+    challenge.completionDates.some((date, index) => date !== previousDates[index])) persistState();
+  const streak = getChallengeStreak(challenge.completionDates, challenge.startedOn);
+  challenge.longestStreak = Math.max(Number(challenge.longestStreak) || 0, streak.longest);
+  if (streak.current >= challenge.durationDays) {
+    archiveActiveChallenge('Completed', formatDateInput(new Date()));
+    return null;
+  }
+  return challenge;
+}
+
+function renderChallengeDialogContent() {
+  const challenge = state.activeChallenge;
+  if (challenge) {
+    const streak = getChallengeStreak(challenge.completionDates || [], challenge.startedOn);
+    els.activeChallengeSummary.innerHTML = `
+      <div class="challenge-current-card">
+        <div><p class="eyebrow">Active challenge</p><h3>${escapeHtml(challenge.label)}</h3><p>${escapeHtml(challenge.categoryLabel)} · ${challenge.durationDays} days</p></div>
+        <strong class="challenge-streak-count">${streak.current}<span>day streak</span></strong>
+        <p class="challenge-reason">${escapeHtml(challenge.reason)}</p>
+        <button id="endActiveChallengeBtn" class="secondary-btn" type="button">End challenge</button>
+      </div>`;
+  } else {
+    els.activeChallengeSummary.innerHTML = '<div class="empty-state">No active challenge. Choose a category, set your commitment, and start when you are ready.</div>';
+  }
+  const history = [...state.challengeHistory].sort((a, b) => String(b.endedOn || '').localeCompare(String(a.endedOn || '')));
+  els.challengeHistoryList.innerHTML = history.length ? history.map((entry) => `
+    <article class="challenge-history-entry">
+      <div><strong>${escapeHtml(entry.label || 'Challenge')}</strong><span>${escapeHtml(entry.categoryLabel || 'Legacy challenge')} · ${entry.durationDays || '?'} days</span></div>
+      <div><strong>${entry.longestStreak || 0} day${Number(entry.longestStreak) === 1 ? '' : 's'}</strong><span>${escapeHtml(entry.status || 'Ended')} · ${entry.endedOn ? formatDateLabel(entry.endedOn) : ''}</span></div>
+    </article>`).join('') : '<p class="muted-copy">Your finished challenges will appear here.</p>';
+}
+
+function archiveActiveChallenge(status, endedOn) {
+  if (!state.activeChallenge) return;
+  const challenge = state.activeChallenge;
+  const streak = getChallengeStreak(challenge.completionDates || [], challenge.startedOn);
+  state.challengeHistory.unshift({
+    ...challenge,
+    status,
+    endedOn,
+    longestStreak: Math.max(Number(challenge.longestStreak) || 0, streak.longest)
+  });
+  state.activeChallenge = null;
+  persistState();
 }
 
 function renderCategoryQuickSelect() {
@@ -506,7 +637,8 @@ function renderCategoryQuickSelect() {
 
 function renderCategories() {
   els.selectedCategoryTitle.textContent = state.selectedCategory;
-  els.trashCount.textContent = String(state.deletedTasks.length);
+  els.trashCount.textContent = String(state.deletedTasks.length + state.deletedCategories.length +
+    getDeletedFitnessCategories().length + getDeletedFitnessTasks().length);
 }
 
 function renderTaskList() {
@@ -866,18 +998,22 @@ function useSuggestion() {
 function purgeExpiredDeletedTasks() {
   const retentionCutoff = Date.now() - 15 * 24 * 60 * 60 * 1000;
   state.deletedTasks = state.deletedTasks.filter((entry) => Number(entry.deletedAt) >= retentionCutoff);
+  state.deletedCategories = state.deletedCategories.filter((entry) => Number(entry.deletedAt) >= retentionCutoff);
 }
 
 function renderTrashList() {
-  els.trashCount.textContent = String(state.deletedTasks.length);
-  if (!state.deletedTasks.length) {
+  const fitnessCategories = getDeletedFitnessCategories();
+  const fitnessTasks = getDeletedFitnessTasks();
+  const deletedCount = state.deletedTasks.length + state.deletedCategories.length + fitnessCategories.length + fitnessTasks.length;
+  els.trashCount.textContent = String(deletedCount);
+  if (!deletedCount) {
     els.trashList.innerHTML = '<div class="empty-state">The deleted list is empty.</div>';
     return;
   }
 
-  els.trashList.innerHTML = [...state.deletedTasks]
-    .sort((a, b) => b.deletedAt - a.deletedAt)
-    .map(({ task, deletedAt }) => `
+  const taskEntries = state.deletedTasks.map(({ task, deletedAt }) => ({
+    deletedAt,
+    html: `
       <div class="task-card trash-card">
         <div class="task-main">
           <span class="task-title">${escapeHtml(task.title)}</span>
@@ -887,9 +1023,100 @@ function renderTrashList() {
           <button class="complete-task-btn" type="button" data-action="restore-task" data-task-id="${task.id}">Restore</button>
           <button class="delete-btn" type="button" data-action="discard-trash" data-task-id="${task.id}">Delete permanently</button>
         </div>
-      </div>
-    `)
+      </div>`
+  }));
+  const categoryEntries = state.deletedCategories.map((entry) => ({
+    deletedAt: entry.deletedAt,
+    html: `
+      <div class="task-card trash-card">
+        <div class="task-main">
+          <span class="task-title">${escapeHtml(entry.category)} category</span>
+          <div class="task-meta">Planner category · Deleted ${new Date(entry.deletedAt).toLocaleDateString()}</div>
+        </div>
+        <div class="task-side trash-actions">
+          <button class="complete-task-btn" type="button" data-action="restore-category" data-category-id="${escapeHtml(entry.id)}">Restore</button>
+          <button class="delete-btn" type="button" data-action="discard-category" data-category-id="${escapeHtml(entry.id)}">Delete permanently</button>
+        </div>
+      </div>`
+  }));
+  const fitnessEntries = fitnessCategories.map((entry) => ({
+    deletedAt: entry.deletedAt,
+    html: `
+      <div class="task-card trash-card">
+        <div class="task-main">
+          <span class="task-title">${escapeHtml(entry.category?.label || 'Fitness category')}</span>
+          <div class="task-meta">Fitness category · Deleted ${new Date(entry.deletedAt).toLocaleDateString()}</div>
+        </div>
+        <div class="task-side trash-actions">
+          <button class="complete-task-btn" type="button" data-action="restore-fitness-category" data-category-id="${escapeHtml(entry.id)}">Restore</button>
+          <button class="delete-btn" type="button" data-action="discard-fitness-category" data-category-id="${escapeHtml(entry.id)}">Delete permanently</button>
+        </div>
+      </div>`
+  }));
+  const fitnessTaskEntries = fitnessTasks.map((entry) => ({
+    deletedAt: entry.deletedAt,
+    html: `
+      <div class="task-card trash-card">
+        <div class="task-main">
+          <span class="task-title">${escapeHtml(entry.entry?.title || 'Fitness habit')}</span>
+          <div class="task-meta">${escapeHtml(entry.entry?.group || 'Fitness')} habit · Deleted ${new Date(entry.deletedAt).toLocaleDateString()}</div>
+        </div>
+        <div class="task-side trash-actions">
+          <button class="complete-task-btn" type="button" data-action="restore-fitness-task" data-category-id="${escapeHtml(entry.id)}">Restore</button>
+          <button class="delete-btn" type="button" data-action="discard-fitness-task" data-category-id="${escapeHtml(entry.id)}">Delete permanently</button>
+        </div>
+      </div>`
+  }));
+  els.trashList.innerHTML = [...taskEntries, ...categoryEntries, ...fitnessEntries, ...fitnessTaskEntries]
+    .sort((a, b) => b.deletedAt - a.deletedAt)
+    .map((entry) => entry.html)
     .join('');
+}
+
+function getDeletedFitnessCategories() {
+  const fitness = readFitnessData();
+  return Array.isArray(fitness.deletedCategories) ? fitness.deletedCategories : [];
+}
+
+function getDeletedFitnessTasks() {
+  const fitness = readFitnessData();
+  return Array.isArray(fitness.deletedEntries)
+    ? fitness.deletedEntries.filter((entry) => entry.type === 'habit')
+    : [];
+}
+
+function restoreDeletedCategory(categoryId) {
+  const index = state.deletedCategories.findIndex((entry) => entry.id === categoryId);
+  if (index < 0) return;
+  const [entry] = state.deletedCategories.splice(index, 1);
+  if (!state.categories.includes(entry.category)) state.categories.push(entry.category);
+  const ids = new Set(entry.taskIds || []);
+  [...state.tasks, ...state.deletedTasks.map((deleted) => deleted.task)]
+    .filter((task) => ids.has(task.id))
+    .forEach((task) => { task.category = entry.category; });
+  persistState();
+  renderAll();
+  showToast(`${entry.category} category restored`, 'success');
+}
+
+function discardDeletedCategory(categoryId) {
+  state.deletedCategories = state.deletedCategories.filter((entry) => entry.id !== categoryId);
+  persistState();
+  renderAll();
+  showToast('Deleted category permanently removed', 'success');
+}
+
+function performFitnessTrashAction(action, categoryId) {
+  window.dispatchEvent(new CustomEvent('focusflow:fitness-trash-action', {
+    detail: { action, id: categoryId }
+  }));
+  const messages = {
+    'restore-category': 'Fitness category restored',
+    'discard-category': 'Fitness category permanently removed',
+    'restore-task': 'Fitness task restored',
+    'discard-task': 'Fitness task permanently removed'
+  };
+  showToast(messages[action] || 'Recently deleted item updated', 'success');
 }
 
 function restoreDeletedTask(taskId) {
@@ -952,7 +1179,8 @@ function setMobileMenuOpen(isOpen) {
 function navigateAppPage(page, recordHistory = true) {
   const target = els.appPages.find((item) => item.dataset.appPage === page);
   if (!target) return;
-  if (page !== state.currentPage && recordHistory) {
+  if (page === 'home') state.pageHistory = [];
+  else if (page !== state.currentPage && recordHistory) {
     state.pageHistory.push(state.currentPage);
   }
   state.currentPage = page;
@@ -1043,6 +1271,16 @@ function handleCategoryDialogSubmit(event) {
   const replacement = state.categories.find((item) => item !== category);
   if (!replacement) return;
 
+  const taskIds = [
+    ...state.tasks.filter((task) => task.category === category),
+    ...state.deletedTasks.map((entry) => entry.task).filter((task) => task.category === category)
+  ].map((task) => task.id);
+  state.deletedCategories.push({
+    id: generateId(),
+    category,
+    deletedAt: Date.now(),
+    taskIds
+  });
   state.tasks.forEach((task) => {
     if (task.category === category) task.category = replacement;
   });
@@ -1135,6 +1373,15 @@ function toggleTaskComplete(taskId) {
 
   task.completed = !task.completed;
   task.reminderTriggered = true;
+  state.taskCompletionHistory = state.taskCompletionHistory.filter((entry) => !(entry.taskId === task.id && entry.date === task.date));
+  if (task.completed) {
+    state.taskCompletionHistory.push({
+      taskId: task.id,
+      category: task.category,
+      date: task.date,
+      completedAt: Date.now()
+    });
+  }
 
   if (task.completed && task.recurrence && task.recurrence !== 'none') {
     rescheduleRecurringTask(task);
@@ -1202,6 +1449,12 @@ function attachCalendarListeners() {
       if (action === 'delete-task') deleteTask(taskId);
       if (action === 'restore-task') restoreDeletedTask(taskId);
       if (action === 'discard-trash') discardDeletedTask(taskId);
+      if (action === 'restore-category') restoreDeletedCategory(actionButton.dataset.categoryId);
+      if (action === 'discard-category') discardDeletedCategory(actionButton.dataset.categoryId);
+      if (action === 'restore-fitness-category') performFitnessTrashAction('restore-category', actionButton.dataset.categoryId);
+      if (action === 'discard-fitness-category') performFitnessTrashAction('discard-category', actionButton.dataset.categoryId);
+      if (action === 'restore-fitness-task') performFitnessTrashAction('restore-task', actionButton.dataset.categoryId);
+      if (action === 'discard-fitness-task') performFitnessTrashAction('discard-task', actionButton.dataset.categoryId);
       if (action === 'delete-category') prepareCategoryDeletion(categoryName);
       return;
     }
@@ -1228,16 +1481,22 @@ function attachCalendarListeners() {
 }
 
 function exportData() {
-  const blob = new Blob([JSON.stringify({
+  const backup = {
     categories: state.categories,
     tasks: state.tasks,
     deletedTasks: state.deletedTasks,
+    deletedCategories: state.deletedCategories,
+    taskCompletionHistory: state.taskCompletionHistory,
     profile: state.profile,
     customChallenges: state.customChallenges,
     activeChallenge: state.activeChallenge,
+    challengeHistory: state.challengeHistory,
     pomodoroHistory: state.pomodoroHistory,
-    pomodoroMinutes: state.pomodoro.minutes
-  }, null, 2)], { type: 'application/json' });
+    pomodoroMinutes: state.pomodoro.minutes,
+    pomodoroAlertMode: state.pomodoro.alertMode
+  };
+  window.dispatchEvent(new CustomEvent('focusflow:fitness-export', { detail: backup }));
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -1259,14 +1518,33 @@ function importData(event) {
       state.categories = Array.isArray(parsed.categories) && parsed.categories.length ? parsed.categories : state.categories;
       state.tasks = parsed.tasks;
       state.deletedTasks = Array.isArray(parsed.deletedTasks) ? parsed.deletedTasks : [];
+      state.deletedCategories = Array.isArray(parsed.deletedCategories) ? parsed.deletedCategories : [];
+      state.taskCompletionHistory = Array.isArray(parsed.taskCompletionHistory) ? parsed.taskCompletionHistory : [];
       state.profile = { ...state.profile, ...(parsed.profile || {}) };
       state.customChallenges = Array.isArray(parsed.customChallenges) ? parsed.customChallenges : [];
       state.activeChallenge = parsed.activeChallenge || null;
+      state.challengeHistory = Array.isArray(parsed.challengeHistory) ? parsed.challengeHistory : [];
+      if (state.activeChallenge && !state.activeChallenge.categorySource) {
+        state.challengeHistory.unshift({
+          ...state.activeChallenge,
+          status: 'Archived legacy challenge',
+          endedOn: formatDateInput(new Date()),
+          completionDates: Array.isArray(state.activeChallenge.completionDates) ? state.activeChallenge.completionDates : []
+        });
+        state.activeChallenge = null;
+      }
       state.pomodoroHistory = normalizePomodoroHistory(parsed.pomodoroHistory);
       state.pomodoro.minutes = Number.isInteger(parsed.pomodoroMinutes)
         ? Math.min(180, Math.max(1, parsed.pomodoroMinutes))
         : 25;
+      state.pomodoro.alertMode = ['alarm', 'vibration', 'both'].includes(parsed.pomodoroAlertMode)
+        ? parsed.pomodoroAlertMode
+        : 'both';
+      els.pomodoroAlertMode.value = state.pomodoro.alertMode;
       state.pomodoro.remainingSeconds = state.pomodoro.minutes * 60;
+      if (parsed.fitness && typeof parsed.fitness === 'object' && !Array.isArray(parsed.fitness)) {
+        window.dispatchEvent(new CustomEvent('focusflow:fitness-import', { detail: parsed.fitness }));
+      }
       purgeExpiredDeletedTasks();
       persistState();
       seedForm();
@@ -1300,7 +1578,13 @@ function requestNotifications() {
 
 function playAlarmTone() {
   const context = alarmAudioContext || unlockAlarmAudio();
-  if (!context) return;
+  if (!context) {
+    if (!alarmAudioWarningShown) {
+      showToast('Alarm audio is not supported by this browser. Use vibration mode if available.', 'warning');
+      alarmAudioWarningShown = true;
+    }
+    return;
+  }
 
   const play = () => {
     const now = context.currentTime;
@@ -1315,12 +1599,20 @@ function playAlarmTone() {
     gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.72);
     oscillator.connect(gainNode);
     gainNode.connect(context.destination);
+    activeAlarmOscillators.add(oscillator);
+    oscillator.addEventListener('ended', () => activeAlarmOscillators.delete(oscillator), { once: true });
     oscillator.start(now);
     oscillator.stop(now + 0.72);
   };
 
   if (context.state === 'suspended') {
-    context.resume().then(play).catch((error) => console.warn('Alarm audio could not resume', error));
+    context.resume().then(play).catch((error) => {
+      console.warn('Alarm audio could not resume', error);
+      if (!alarmAudioWarningShown) {
+        showToast('The browser blocked alarm audio. Interact with the page and check sound settings.', 'warning');
+        alarmAudioWarningShown = true;
+      }
+    });
   } else {
     play();
   }
@@ -1435,7 +1727,8 @@ function tickPomodoro() {
     persistState();
     renderPomodoroHistory();
     showToast('Pomodoro complete. Great focus session.', 'success');
-    playAlarmTone();
+    playPomodoroAlert();
+    els.pomodoroCompletionDialog.showModal();
   }
 }
 
@@ -1455,6 +1748,7 @@ function pausePomodoro() {
 }
 
 function resetPomodoro() {
+  finishPomodoroAlert();
   if (state.pomodoro.intervalId) {
     clearInterval(state.pomodoro.intervalId);
     state.pomodoro.intervalId = null;
@@ -1465,6 +1759,33 @@ function resetPomodoro() {
   els.timerDisplay.textContent = formatTimer(state.pomodoro.minutes * 60);
   els.startPomodoroBtn.textContent = 'Start';
   els.pomodoroDurationSelect.disabled = false;
+}
+
+function playPomodoroAlert() {
+  const mode = state.pomodoro.alertMode;
+  const alertOnce = () => {
+    if (mode === 'alarm' || mode === 'both') playAlarmTone();
+    if (mode === 'vibration' || mode === 'both') {
+      if (typeof navigator.vibrate === 'function') navigator.vibrate([350, 180, 350]);
+    }
+  };
+  if ((mode === 'vibration' || mode === 'both') && typeof navigator.vibrate !== 'function') {
+    showToast('Vibration is not supported on this device.', 'warning');
+  }
+  state.pomodoro.alertIntervalId = window.setInterval(alertOnce, 900);
+  alertOnce();
+}
+
+function finishPomodoroAlert() {
+  if (state.pomodoro.alertIntervalId) {
+    clearInterval(state.pomodoro.alertIntervalId);
+    state.pomodoro.alertIntervalId = null;
+  }
+  alarmAudioWarningShown = false;
+  activeAlarmOscillators.forEach((oscillator) => oscillator.stop());
+  activeAlarmOscillators.clear();
+  if (typeof navigator.vibrate === 'function') navigator.vibrate(0);
+  if (els.pomodoroCompletionDialog.open) els.pomodoroCompletionDialog.close();
 }
 
 function wireEvents() {
@@ -1494,87 +1815,60 @@ function wireEvents() {
     navigateAppPage('tasks');
     state.categoryMenuWasOpen = false;
   });
-  els.challengeSelect.addEventListener('focus', () => {
-    state.challengeMenuWasOpen = els.sidebar.classList.contains('is-open');
-  });
-  ['pointerdown', 'click', 'touchstart'].forEach((eventName) => {
-    els.challengeSelect.addEventListener(eventName, (event) => event.stopPropagation());
-  });
   els.deleteCategoryBtn.addEventListener('click', () => {
     if (state.selectedCategory !== 'All') prepareCategoryDeletion(state.selectedCategory);
   });
-  els.challengeSelect.addEventListener('change', (event) => {
-    const value = event.target.value;
-    const drawerWasOpen = els.sidebar.classList.contains('is-open');
-    if (!value) {
-      state.activeChallenge = null;
-      persistState();
-      renderChallengeProgress();
-      renderHomePage();
-      showToast('Challenge cleared', 'success');
-      if (drawerWasOpen) setMobileMenuOpen(true);
-      return;
-    }
-
-    if (value === 'custom') {
-      buildChallengeOptions();
-      els.customChallengeForm.reset();
-      els.customChallengeDays.value = '14';
-      els.customChallengeDialog.showModal();
-      els.customChallengeName.focus();
-      if (drawerWasOpen) setMobileMenuOpen(true);
-      return;
-    }
-
-    const challenge = [...state.challengeTemplates, ...state.customChallenges].find((entry) => entry.id === value);
-    if (!challenge) return;
-
-    state.activeChallenge = {
-      ...challenge,
-      startedOn: formatDateInput(new Date())
-    };
-    persistState();
-    renderChallengeProgress();
-    renderHomePage();
-    showToast(`${challenge.label} selected`, 'success');
-    if (drawerWasOpen) setMobileMenuOpen(true);
-  });
-  els.customChallengeForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const label = els.customChallengeName.value.trim();
-    const durationDays = Number(els.customChallengeDays.value);
-    if (!label || !Number.isInteger(durationDays) || durationDays < 1 || durationDays > 3650) {
-      showToast('Enter a challenge name and a duration from 1 to 3650 days', 'warning');
-      return;
-    }
-
-    const challenge = {
-      id: `custom-${generateId()}`,
-      label,
-      durationDays
-    };
-    state.customChallenges.push(challenge);
-    state.activeChallenge = {
-      ...challenge,
-      startedOn: formatDateInput(new Date())
-    };
-    persistState();
-    els.customChallengeDialog.close();
-    renderAll();
-    showToast(`${label} started`, 'success');
-    if (els.sidebar.classList.contains('is-open')) setMobileMenuOpen(true);
-  });
-  els.cancelCustomChallenge.addEventListener('click', () => {
-    els.customChallengeDialog.close();
+  els.streakModeBtn.addEventListener('click', () => {
     buildChallengeOptions();
-    if (els.sidebar.classList.contains('is-open')) setMobileMenuOpen(true);
+    renderChallengeDialogContent();
+    els.challengeDialog.showModal();
   });
-  els.customChallengeDialog.addEventListener('click', (event) => {
-    if (event.target === els.customChallengeDialog) {
-      els.customChallengeDialog.close();
-      buildChallengeOptions();
-      if (els.sidebar.classList.contains('is-open')) setMobileMenuOpen(true);
+  [els.closeChallengeDialogBtn, els.cancelChallengeBtn].forEach((button) => {
+    button.addEventListener('click', () => els.challengeDialog.close());
+  });
+  els.challengeDialog.addEventListener('click', (event) => {
+    if (event.target === els.challengeDialog) els.challengeDialog.close();
+    const endButton = event.target.closest('#endActiveChallengeBtn');
+    if (endButton) {
+      archiveActiveChallenge('Ended', formatDateInput(new Date()));
+      persistState();
+      renderAll();
+      showToast('Challenge saved to history', 'success');
     }
+  });
+  els.challengeDays.addEventListener('change', () => {
+    const isCustom = els.challengeDays.value === 'custom';
+    els.customChallengeDaysWrap.hidden = !isCustom;
+    els.customChallengeDays.required = isCustom;
+  });
+  els.challengeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const label = els.challengeName.value.trim();
+    const durationDays = els.challengeDays.value === 'custom' ? Number(els.customChallengeDays.value) : Number(els.challengeDays.value);
+    const categorySource = els.challengeCategory.value;
+    const categoryLabel = els.challengeCategory.selectedOptions[0]?.textContent || '';
+    const reason = els.challengeReason.value.trim();
+    if (!label || !reason || !categorySource || !Number.isInteger(durationDays) || durationDays < 1 || durationDays > 3650) {
+      showToast('Add a name, reason, category, and valid duration (1–3650 days)', 'warning');
+      return;
+    }
+
+    if (state.activeChallenge) archiveActiveChallenge('Replaced', formatDateInput(new Date()));
+    state.activeChallenge = {
+      id: `challenge-${generateId()}`,
+      label,
+      durationDays,
+      categorySource,
+      categoryLabel,
+      reason,
+      startedOn: formatDateInput(new Date()),
+      completionDates: [],
+      longestStreak: 0
+    };
+    persistState();
+    els.challengeDialog.close();
+    renderAll();
+    showToast(`${label} started — keep logging ${categoryLabel} each day`, 'success');
   });
   els.priorityFilter.addEventListener('change', (event) => {
     state.selectedPriority = event.target.value;
@@ -1683,23 +1977,33 @@ function wireEvents() {
   els.profileForm.addEventListener('submit', saveProfile);
   els.profileForm.addEventListener('input', persistProfileDraft);
   els.useSuggestionBtn.addEventListener('click', useSuggestion);
+  els.feedbackForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const name = els.feedbackName.value.trim() || 'Not provided';
+    const rating = els.feedbackRating.value;
+    const message = els.feedbackMessage.value.trim();
+    if (!message) {
+      showToast('Please share a little feedback before submitting', 'warning');
+      return;
+    }
+    const subject = encodeURIComponent('Focus Planner app feedback');
+    const body = encodeURIComponent(`Name: ${name}\nRating: ${rating}/5\n\nFeedback:\n${message}`);
+    window.location.href = `mailto:rabbanisk162002@gmail.com?subject=${subject}&body=${body}`;
+    showToast('Your email app is opening with the feedback. Send the message there to deliver it.', 'success');
+  });
 
   els.menuToggle.addEventListener('click', () => {
     setMobileMenuOpen(!els.sidebar.classList.contains('is-open'));
   });
+  els.drawerCloseBtn.addEventListener('click', () => setMobileMenuOpen(false));
   els.menuScrim.addEventListener('click', () => setMobileMenuOpen(false));
-  els.sidebar.addEventListener('click', (event) => {
-    if (event.target.closest('#challengeSelect, #categoryQuickSelect')) {
-      event.stopPropagation();
-    }
-  });
-  els.sidebar.addEventListener('change', (event) => {
-    if (event.target === els.challengeSelect && state.challengeMenuWasOpen) {
-      setMobileMenuOpen(true);
-      state.challengeMenuWasOpen = false;
-    }
-  });
   document.addEventListener('click', (event) => {
+    if (event.target.closest('[data-open-challenges]')) {
+      buildChallengeOptions();
+      renderChallengeDialogContent();
+      els.challengeDialog.showModal();
+      return;
+    }
     const backButton = event.target.closest('[data-back]');
     if (backButton) {
       goBack();
@@ -1712,12 +2016,27 @@ function wireEvents() {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') setMobileMenuOpen(false);
   });
+  window.addEventListener('focusflow:fitness-updated', () => {
+    renderChallengeProgress();
+    renderHomePage();
+    renderTrashList();
+  });
+  window.addEventListener('focusflow:fitness-trash-updated', renderTrashList);
 
   els.exportBtn.addEventListener('click', exportData);
   els.importFile.addEventListener('change', importData);
   els.requestNotificationBtn.addEventListener('click', requestNotifications);
   els.startPomodoroBtn.addEventListener('click', startPomodoro);
   els.resetPomodoroBtn.addEventListener('click', resetPomodoro);
+  els.finishPomodoroAlertBtn.addEventListener('click', finishPomodoroAlert);
+  els.pomodoroCompletionDialog.addEventListener('cancel', (event) => event.preventDefault());
+  els.pomodoroAlertMode.addEventListener('change', (event) => {
+    state.pomodoro.alertMode = ['alarm', 'vibration', 'both'].includes(event.target.value)
+      ? event.target.value
+      : 'both';
+    persistState();
+    showToast(`Pomodoro alert set to ${event.target.selectedOptions[0].text}`, 'success');
+  });
 
   document.addEventListener('click', (event) => {
     const taskCard = event.target.closest('.task-card');
@@ -1752,6 +2071,7 @@ function wireEvents() {
 
 function init() {
   loadState();
+  els.pomodoroAlertMode.value = state.pomodoro.alertMode;
   purgeExpiredDeletedTasks();
   state.selectedCategory = state.categories[0] || 'All';
   setMobileView('home');
