@@ -2076,6 +2076,50 @@ html[data-theme="light"] .toast {
 }
 
 @media (max-width: 1100px) {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .app-shell {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .main-panel {
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .mobile-navbar {
+    position: relative;
+    top: auto;
+    z-index: 30;
+    flex: 0 0 auto;
+  }
+
+  .app-page:not([hidden]) {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+  }
+
   .content-grid {
     grid-template-columns: 1fr;
   }
@@ -2104,6 +2148,7 @@ html[data-theme="light"] .toast {
   }
 
   .sidebar {
+    position: fixed;
     inset: 0 auto 0 0;
     width: min(84vw, 320px);
     height: 100vh;
